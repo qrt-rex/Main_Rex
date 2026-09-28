@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexera HR - Attendance & Time Tracking</title>
+  <link rel="stylesheet" href="/css/main.css?v=3.1">
+  <link rel="stylesheet" href="/css/dashboard.css?v=3.1">
+  <link rel="stylesheet" href="/css/tables.css?v=3.1">
+  <link rel="stylesheet" href="/css/forms.css?v=3.1">
+  <link rel="stylesheet" href="/css/responsive.css?v=3.1">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+  <style>
+    .timing-rule-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .rule-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13.5px;
+    }
+    .rule-item:last-child { border-bottom: none; }
+    .rule-badge {
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .badge-ontime { background: #dcfce7; color: #166534; }
+    .badge-late { background: #fef9c3; color: #854d0e; }
+    .badge-halfday { background: #fee2e2; color: #991b1b; }
+    .filter-bar {
+      display: flex;
+      gap: 15px;
+      background: #fff;
+      padding: 15px 20px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <img src="/assets/logo.png" alt="Rexera Logo">
+        <span class="brand-text">REX<span>ERA</span></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Core Operations</div>
+        <a href="/dashboard.html" class="nav-link">
+          <span>📊</span> Dashboard
+        </a>
+        <a href="/attendance.html" class="nav-link active">
+          <span>⏰</span> Attendance & Time
+        </a>
+        <a href="/leaves.html" class="nav-link">
+          <span>🌴</span> Leave Management
+        </a>
+        <a href="/productivity.html" class="nav-link">
+          <span>💼</span> Client Productivity
+        </a>
+
+        <div class="nav-section-title">Reports & Tools</div>
+        <a href="/performance-reports.html" class="nav-link">
+          <span>📈</span> Performance Reports
+        </a>
+        <a href="/bulk-import.html" class="nav-link">
+          <span>📥</span> Smart Bulk Import
+        </a>
+        <a href="/broadcasts.html" class="nav-link">
+          <span>📢</span> Company Broadcasts
+        </a>
+
+        <div class="nav-section-title">Payroll System</div>
+        <a href="/payroll.html" class="nav-link">
+          <span>💰</span> Payroll Operations
+        </a>
+        <a href="/advances-loans.html" class="nav-link">
+          <span>💳</span> Advances & Loans
+        </a>
+        <a href="/salary-slip.html" class="nav-link">
+          <span>📄</span> Generate Payslip
+        </a>
+        <a href="/salary-report.html" class="nav-link">
+          <span>📈</span> Salary Register
+        </a>
+        <a href="/payroll-settings.html" class="nav-link">
+          <span>⚙️</span> Payroll Settings
+        </a>
+
+        <div class="nav-section-title">System</div>
+        <a href="/logs.html" class="nav-link">
+          <span>📋</span> Activity Logs
+        </a>
+
+        <div class="nav-section-title">Workforce & Recruitment</div>
+        <a href="/employees.html" class="nav-link">
+          <span>👥</span> Employees Directory
+        </a>
+        <a href="/candidates.html" class="nav-link">
+          <span>🎯</span> Recruitment Pipeline
+        </a>
+        <a href="/interns.html" class="nav-link">
+          <span>🎓</span> Interns & Trainees
+        </a>
+        <a href="/add-employee.html" class="nav-link">
+          <span>➕</span> Add Employee
+        </a>
+        <a href="/joining-login.html" target="_blank" class="nav-link">
+          <span>🔗</span> Candidate Portal ↗
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile-widget">
+          <div class="user-avatar" id="sidebar-user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="sidebar-user-name">HR Admin</div>
+            <div class="user-role" id="sidebar-user-role">Superadmin</div>
+          </div>
+          <button class="btn-action btn-logout" title="Sign Out" style="background: rgba(255,255,255,0.1); color: #fff; border: none;">
+            🚪
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Shell -->
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle-btn" id="menu-toggle">☰</button>
+          <h1 class="page-title">Attendance & Time-Tracking Console</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-outline btn-sm" id="btn-open-timing-settings">⚙️ Shift & Grace Settings</button>
+          <button class="btn btn-primary btn-sm" id="btn-refresh-attendance">🔄 Refresh Records</button>
+        </div>
+      </header>
+
+      <div class="page-container">
+        <!-- Automated Policy Rules Card (rendered from saved timing config) -->
+        <div class="timing-rule-card" style="margin-bottom:25px;">
+          <h3 style="margin-top:0; color:#09234b; font-size:16px;">Automated Attendance Policies</h3>
+          <div id="policy-rules"><div style="color:#64748b; font-size:13px;">Loading policies...</div></div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div>
+            <label style="font-size:12px; font-weight:bold; color:#64748b; display:block;">Select Date</label>
+            <input type="date" id="filter-att-date" class="form-control" style="padding:6px 10px; font-size:13px;">
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:bold; color:#64748b; display:block;">Filter Employee</label>
+            <select id="filter-att-employee" class="form-control" style="padding:6px 10px; font-size:13px; min-width:180px;">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <div style="margin-left:auto;">
+            <button class="btn btn-outline btn-sm" id="btn-filter-today">Today</button>
+            <button class="btn btn-outline btn-sm" id="btn-filter-this-month">This Month</button>
+          </div>
+        </div>
+
+        <!-- Attendance Records Data Table -->
+        <div class="table-card">
+          <div class="table-header">
+            <h3 class="table-title">Employee Attendance Log</h3>
+            <span class="table-count" id="att-record-count">0 records</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Punch In</th>
+                  <th>Punch Out</th>
+                  <th>Work Hours</th>
+                  <th>Status</th>
+                  <th>Remarks / Penalties</th>
+                </tr>
+              </thead>
+              <tbody id="attendance-table-body">
+                <tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Loading attendance records...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay modal" id="settings-modal" style="display: none;">
+    <div class="modal-box modal-dialog" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙️ Attendance & Shift Timing Rules</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('settings-modal').style.display='none'; document.getElementById('settings-modal').classList.remove('active');">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="attendance-settings-form">
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Shift Start Time</label>
+              <input type="time" class="form-control" id="cfg-shift-start" value="09:00" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Grace Cutoff (On-Time)</label>
+              <input type="time" class="form-control" id="cfg-grace-cutoff" value="09:45" required>
+            </div>
+          </div>
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Late Cutoff (Before Half-Day)</label>
+              <input type="time" class="form-control" id="cfg-late-cutoff" value="11:15" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Early Logout Cutoff</label>
+              <input type="time" class="form-control" id="cfg-early-logout" value="16:00" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Rule of 3 Lates Penalty</label>
+            <select class="form-control" id="cfg-penalty-type">
+              <option value="DEDUCT_CL">Deduct 1 Casual Leave (CL)</option>
+              <option value="MARK_HALF_DAY">Convert to Half-Day</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">HR Alert Email Recipient</label>
+            <input type="email" class="form-control" id="cfg-hr-email" value="hr@rexera.co.in" required>
+          </div>
+          <div class="modal-footer" style="margin-top: 15px; padding: 12px 0 0 0; background: none; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('settings-modal').style.display='none'; document.getElementById('settings-modal').classList.remove('active');">Cancel</button>
+            <button type="submit" class="btn btn-primary">💾 Save Timing Configuration</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js?v=3.1"></script>
+  <script src="/js/auth.js?v=3.1"></script>
+  <script src="/js/attendance.js?v=3.1"></script>
+</body>
+</html>

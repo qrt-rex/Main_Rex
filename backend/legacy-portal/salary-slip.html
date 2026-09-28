@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexera HR - Salary Slip Generator & Viewer</title>
+  <link rel="stylesheet" href="/css/main.css?v=3.1">
+  <link rel="stylesheet" href="/css/forms.css?v=3.1">
+  <link rel="stylesheet" href="/css/tables.css?v=3.1">
+  <link rel="stylesheet" href="/css/responsive.css?v=3.1">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+</head>
+<body>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <img src="/assets/logo.png" alt="Rexera Logo">
+        <span class="brand-text">REX<span>ERA</span></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Core Operations</div>
+        <a href="/dashboard.html" class="nav-link">
+          <span>📊</span> Dashboard
+        </a>
+        <a href="/attendance.html" class="nav-link">
+          <span>⏰</span> Attendance & Time
+        </a>
+        <a href="/leaves.html" class="nav-link">
+          <span>🌴</span> Leave Management
+        </a>
+        <a href="/productivity.html" class="nav-link">
+          <span>💼</span> Client Productivity
+        </a>
+
+        <div class="nav-section-title">Reports & Tools</div>
+        <a href="/performance-reports.html" class="nav-link">
+          <span>📈</span> Performance Reports
+        </a>
+        <a href="/bulk-import.html" class="nav-link">
+          <span>📥</span> Smart Bulk Import
+        </a>
+        <a href="/broadcasts.html" class="nav-link">
+          <span>📢</span> Company Broadcasts
+        </a>
+
+        <div class="nav-section-title">Payroll System</div>
+        <a href="/payroll.html" class="nav-link">
+          <span>💰</span> Payroll Operations
+        </a>
+        <a href="/advances-loans.html" class="nav-link">
+          <span>💳</span> Advances & Loans
+        </a>
+        <a href="/salary-slip.html" class="nav-link active">
+          <span>📄</span> Generate Payslip
+        </a>
+        <a href="/salary-report.html" class="nav-link">
+          <span>📈</span> Salary Register
+        </a>
+        <a href="/payroll-settings.html" class="nav-link">
+          <span>⚙️</span> Payroll Settings
+        </a>
+
+        <div class="nav-section-title">System</div>
+        <a href="/logs.html" class="nav-link">
+          <span>📋</span> Activity Logs
+        </a>
+
+        <div class="nav-section-title">Workforce & Recruitment</div>
+        <a href="/employees.html" class="nav-link">
+          <span>👥</span> Employees Directory
+        </a>
+        <a href="/candidates.html" class="nav-link">
+          <span>🎯</span> Recruitment Pipeline
+        </a>
+        <a href="/interns.html" class="nav-link">
+          <span>🎓</span> Interns & Trainees
+        </a>
+        <a href="/add-employee.html" class="nav-link">
+          <span>➕</span> Add Employee
+        </a>
+        <a href="/joining-login.html" target="_blank" class="nav-link">
+          <span>🔗</span> Candidate Portal ↗
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile-widget">
+          <div class="user-avatar" id="sidebar-user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="sidebar-user-name">HR Admin</div>
+            <div class="user-role" id="sidebar-user-role">Superadmin</div>
+          </div>
+          <button class="btn-action btn-logout" title="Sign Out" style="background: rgba(255,255,255,0.1); color: #fff; border: none;">
+            🚪
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle-btn" id="menu-toggle">☰</button>
+          <h1 class="page-title">Salary Slip Generator</h1>
+        </div>
+        <div class="topbar-right">
+          <a href="/salary-report.html" class="btn btn-outline btn-sm">📊 Monthly Salary Register</a>
+        </div>
+      </header>
+
+      <div class="page-container">
+        <!-- Generator Form Card -->
+        <div class="card" style="max-width: 900px; margin: 0 auto 30px auto;">
+          <div class="card-header">
+            <h3 class="card-title">📄 Generate Monthly Employee Payslip</h3>
+          </div>
+
+          <form id="salary-slip-form">
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label" for="slip-employee-select">Select Employee <span class="required">*</span></label>
+                <select id="slip-employee-select" class="form-select" required>
+                  <option value="">Loading employees...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="slip-month">Salary Month <span class="required">*</span></label>
+                <select id="slip-month" class="form-select" required>
+                  <option value="January">January</option>
+                  <option value="February">February</option>
+                  <option value="March">March</option>
+                  <option value="April">April</option>
+                  <option value="May">May</option>
+                  <option value="June">June</option>
+                  <option value="July">July</option>
+                  <option value="August">August</option>
+                  <option value="September" selected>September</option>
+                  <option value="October">October</option>
+                  <option value="November">November</option>
+                  <option value="December">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="slip-year">Year <span class="required">*</span></label>
+                <input type="number" id="slip-year" class="form-control" value="2026" required>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label" for="slip-working-days">Working Days</label>
+                <input type="number" id="slip-working-days" class="form-control" value="30" min="1" max="31">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="slip-paid-days">Paid Days</label>
+                <input type="number" id="slip-paid-days" class="form-control" value="30" min="0" max="31">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="slip-lop-days">Loss of Pay (LOP) Days</label>
+                <input type="number" id="slip-lop-days" class="form-control" value="0" min="0" max="31">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="slip-bonus">Bonus / Incentive (₹)</label>
+                <input type="number" id="slip-bonus" class="form-control" placeholder="0" value="0">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="slip-other-deductions">Other Deductions (₹)</label>
+                <input type="number" id="slip-other-deductions" class="form-control" placeholder="0" value="0">
+              </div>
+            </div>
+
+            <!-- Live Calculation Breakdown Preview -->
+            <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 20px; margin: 20px 0;">
+              <h4 style="color: var(--rex-navy); font-size: 14px; margin-bottom: 12px;">Live Statutory Calculation Breakdown</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                  <h5 style="color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Earnings</h5>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px;"><span>Basic:</span><strong id="preview-base-val">₹0</strong></div>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px;"><span>HRA:</span><strong id="preview-hra-val">₹0</strong></div>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px;"><span>Conveyance:</span><strong id="preview-conveyance-val">₹0</strong></div>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px;"><span>Special Allowance:</span><strong id="preview-special-val">₹0</strong></div>
+                  <hr style="border: none; border-top: 1px solid var(--border-light); margin: 8px 0;">
+                  <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: var(--rex-navy);"><span>Gross Earnings:</span><span id="preview-gross-earnings">₹0</span></div>
+                </div>
+
+                <div>
+                  <h5 style="color: var(--text-muted); font-size: 12px; text-transform: uppercase;">Deductions</h5>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px;"><span>Provident Fund (PF 12%):</span><strong id="preview-pf-val">₹0</strong></div>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px;"><span>Professional Tax (PT):</span><strong id="preview-pt-val">₹200</strong></div>
+                  <div style="display: flex; justify-content: space-between; font-size: 13px; margin-top: 4px;"><span>LOP Deduction:</span><strong id="preview-lop-val">₹0</strong></div>
+                  <hr style="border: none; border-top: 1px solid var(--border-light); margin: 8px 0;">
+                  <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: var(--danger);"><span>Total Deductions:</span><span id="preview-total-deductions">₹200</span></div>
+                </div>
+              </div>
+
+              <!-- Net Salary Highlight -->
+              <div style="background: #f0fdf4; border: 1px solid #10b981; border-radius: 6px; padding: 14px; margin-top: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <span style="font-weight: 700; color: #065f46; font-size: 14px;">Net Payable Take-Home:</span>
+                  <div id="preview-net-words" style="font-size: 12px; color: #065f46; font-style: italic; margin-top: 2px;">Zero Rupees Only</div>
+                </div>
+                <div id="preview-net-payable" style="font-size: 22px; font-weight: 800; color: #065f46;">₹0</div>
+              </div>
+            </div>
+
+            <div style="text-align: right; margin-top: 20px;">
+              <button type="submit" class="btn btn-primary btn-lg" style="min-width: 220px;">
+                Generate Official Payslip
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Generated Printable Slip View Container (Hidden until generated) -->
+        <div id="generated-slip-container" class="card" style="max-width: 900px; margin: 0 auto; display: none;">
+          <div class="card-header">
+            <h3 class="card-title">🖨️ Official Payslip Preview</h3>
+            <div>
+              <button class="btn btn-primary btn-sm" onclick="document.getElementById('slip-print-iframe').contentWindow.print()">Print / PDF 🖨️</button>
+            </div>
+          </div>
+          <iframe id="slip-print-iframe" style="width: 100%; height: 750px; border: none; border-radius: var(--radius-md);"></iframe>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/api.js?v=3.1"></script>
+  <script src="/js/auth.js?v=3.1"></script>
+  <script src="/js/salary.js?v=3.1"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rex-crm-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "hr-api-memdb",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["C:\\Users\\admin\\AppData\\Local\\Temp\\claude\\D--Rexera-Main-Rex\\8db01a8e-37fb-41a1-b4d9-f17b6519d3d5\\scratchpad\\run_memdb_api.py"],
+      "port": 8000
+    },
+    {
+      "name": "hr-api",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd backend && python -m uvicorn app.main:app --port 8000 --host 0.0.0.0"],
+      "port": 8000
+    }
+  ]
+}

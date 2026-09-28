@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexera Onboarding - Candidate Access Gate</title>
+  <link rel="stylesheet" href="/css/main.css?v=3.1">
+  <link rel="stylesheet" href="/css/forms.css?v=3.1">
+  <link rel="stylesheet" href="/css/responsive.css?v=3.1">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+</head>
+<body style="background: linear-gradient(135deg, #09234b 0%, #0f3d7a 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+
+  <div class="card" style="max-width: 460px; width: 100%; padding: 40px 30px; box-shadow: var(--shadow-xl); border-radius: var(--radius-xl);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <img src="/assets/logo.png" alt="Rexera Logo" style="height: 48px; margin-bottom: 12px;">
+      <h1 style="font-size: 22px; color: var(--rex-navy); margin-bottom: 4px;">Rexera Onboarding Portal</h1>
+      <p style="font-size: 13px; color: var(--text-muted);">Candidate Documentation & Policy Sign-off</p>
+    </div>
+
+    <!-- Step A: Enter Token -->
+    <div id="step-token-box">
+      <form id="token-login-form">
+        <div class="form-group">
+          <label class="form-label" for="joining-token-input">Secure Joining Token <span class="required">*</span></label>
+          <input type="text" id="joining-token-input" class="form-control" placeholder="e.g. REX-A1B2C3" style="font-family: monospace; font-size: 16px; font-weight: 700; letter-spacing: 2px; text-align: center;" value="REX-A1B2C3" required autofocus>
+          <span class="form-hint" style="text-align: center;">Enter the joining token received in your offer email</span>
+        </div>
+
+        <button type="submit" id="btn-validate-token" class="btn btn-gold" style="width: 100%; padding: 12px; font-size: 15px; margin-top: 14px;">
+          Verify Token
+        </button>
+      </form>
+    </div>
+
+    <!-- Step B: Enter Email OTP -->
+    <div id="step-otp-box" style="display: none;">
+      <div style="text-align: center; margin-bottom: 18px;">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: #d1fae5; color: #065f46; font-size: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto;">
+          ✓
+        </div>
+        <h3 style="font-size: 17px; color: var(--rex-navy); margin-bottom: 4px;">Identity Verification</h3>
+        <p style="font-size: 13px; color: var(--text-muted);">
+          A 6-digit verification code has been dispatched to <br><strong id="otp-candidate-email" style="color: var(--rex-navy);"></strong>
+        </p>
+      </div>
+
+      <div class="otp-input-group">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+        <input type="text" maxlength="1" class="otp-digit" autocomplete="off">
+      </div>
+
+      <button type="button" id="btn-verify-joining-otp" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 15px; margin-bottom: 16px;">
+        Verify & Open Onboarding Form
+      </button>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+        <a href="/joining-login.html" style="color: var(--text-muted);">← Re-enter Token</a>
+        <button type="button" id="btn-resend-joining-otp" style="background: none; border: none; color: var(--rex-navy); font-weight: 600; cursor: pointer;">
+          Resend Code
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer Help -->
+    <div style="margin-top: 25px; padding-top: 18px; border-top: 1px solid var(--border-light); text-align: center; font-size: 12px; color: var(--text-muted);">
+      <p>Have an interview scheduled? <a href="/" style="color: var(--rex-navy); font-weight: 600;">Fill Candidate Form</a></p>
+      <div style="margin-top: 6px;">
+        <a href="/admin-login.html" style="color: var(--rex-gold);">HR Admin Sign In →</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js?v=3.1"></script>
+  <script src="/js/joining.js?v=3.2"></script>
+</body>
+</html>

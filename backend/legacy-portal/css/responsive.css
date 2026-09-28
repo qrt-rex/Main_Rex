@@ -1,0 +1,138 @@
+/* ==========================================================================
+   Rexera HR Responsive Breakpoints Stylesheet
+   ========================================================================== */
+
+/* Mobile hamburger button on topbar */
+.menu-toggle-btn {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+@media (max-width: 992px) {
+  :root {
+    --sidebar-width: 240px;
+  }
+
+  .app-sidebar {
+    transform: translateX(-100%);
+    box-shadow: 10px 0 25px rgba(0, 0, 0, 0.2);
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .app-main {
+    margin-left: 0;
+    max-width: 100%;
+  }
+
+  .menu-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .page-container {
+    padding: 20px 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-topbar {
+    padding: 0 16px;
+  }
+
+  .topbar-left .page-title {
+    font-size: 17px;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    font-size: 18px;
+  }
+
+  .stat-value {
+    font-size: 18px;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-filters {
+    width: 100%;
+  }
+
+  .search-box {
+    width: 100%;
+  }
+
+  .filter-select {
+    width: 100%;
+  }
+
+  .otp-digit {
+    width: 42px;
+    height: 52px;
+    font-size: 20px;
+  }
+
+  .drawer-panel {
+    width: 100%;
+  }
+}
+
+/* Prevent sideways scrolling on narrow screens (card grids, filter rows, tab bars, charts) */
+.module-launcher-grid,
+.red-zone-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+}
+
+@media (max-width: 768px) {
+  .filter-bar,
+  .tab-bar {
+    flex-wrap: wrap;
+  }
+
+  .tab-btn {
+    padding: 8px 12px !important;
+    flex: 1 1 auto;
+  }
+
+  .leave-balance-grid,
+  .efficiency-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .chart-container-card {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .chart-container-card canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

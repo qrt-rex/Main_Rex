@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexera HR - Productivity, Projects & Bottleneck Tracker</title>
+  <link rel="stylesheet" href="/css/main.css?v=3.1">
+  <link rel="stylesheet" href="/css/dashboard.css?v=3.1">
+  <link rel="stylesheet" href="/css/tables.css?v=3.1">
+  <link rel="stylesheet" href="/css/forms.css?v=3.1">
+  <link rel="stylesheet" href="/css/responsive.css?v=3.1">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+  <style>
+    .red-zone-banner {
+      background: linear-gradient(135deg, #b91c1c 0%, #dc2626 100%);
+      color: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 20px rgba(220, 38, 38, 0.25);
+    }
+    .red-zone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .red-zone-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .red-zone-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 15px;
+    }
+    .blocker-card {
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .blocker-cat-pill {
+      font-size: 11px;
+      font-weight: 700;
+      background: #fff;
+      color: #b91c1c;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .efficiency-card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    .eff-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .eff-card-val { font-size: 26px; font-weight: 800; color: #09234b; margin: 6px 0; }
+    .status-badge-underutilized { background: #fee2e2; color: #991b1b; padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+    .status-badge-burnout { background: #ffedd5; color: #9a3412; padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+    .status-badge-optimal { background: #dcfce7; color: #166534; padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <img src="/assets/logo.png" alt="Rexera Logo">
+        <span class="brand-text">REX<span>ERA</span></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Core Operations</div>
+        <a href="/dashboard.html" class="nav-link">
+          <span>📊</span> Dashboard
+        </a>
+        <a href="/attendance.html" class="nav-link">
+          <span>⏰</span> Attendance & Time
+        </a>
+        <a href="/leaves.html" class="nav-link">
+          <span>🌴</span> Leave Management
+        </a>
+        <a href="/productivity.html" class="nav-link active">
+          <span>💼</span> Client Productivity
+        </a>
+
+        <div class="nav-section-title">Reports & Tools</div>
+        <a href="/performance-reports.html" class="nav-link">
+          <span>📈</span> Performance Reports
+        </a>
+        <a href="/bulk-import.html" class="nav-link">
+          <span>📥</span> Smart Bulk Import
+        </a>
+        <a href="/broadcasts.html" class="nav-link">
+          <span>📢</span> Company Broadcasts
+        </a>
+
+        <div class="nav-section-title">Payroll System</div>
+        <a href="/payroll.html" class="nav-link">
+          <span>💰</span> Payroll Operations
+        </a>
+        <a href="/advances-loans.html" class="nav-link">
+          <span>💳</span> Advances & Loans
+        </a>
+        <a href="/salary-slip.html" class="nav-link">
+          <span>📄</span> Generate Payslip
+        </a>
+        <a href="/salary-report.html" class="nav-link">
+          <span>📈</span> Salary Register
+        </a>
+        <a href="/payroll-settings.html" class="nav-link">
+          <span>⚙️</span> Payroll Settings
+        </a>
+
+        <div class="nav-section-title">System</div>
+        <a href="/logs.html" class="nav-link">
+          <span>📋</span> Activity Logs
+        </a>
+
+        <div class="nav-section-title">Workforce & Recruitment</div>
+        <a href="/employees.html" class="nav-link">
+          <span>👥</span> Employees Directory
+        </a>
+        <a href="/candidates.html" class="nav-link">
+          <span>🎯</span> Recruitment Pipeline
+        </a>
+        <a href="/interns.html" class="nav-link">
+          <span>🎓</span> Interns & Trainees
+        </a>
+        <a href="/add-employee.html" class="nav-link">
+          <span>➕</span> Add Employee
+        </a>
+        <a href="/joining-login.html" target="_blank" class="nav-link">
+          <span>🔗</span> Candidate Portal ↗
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile-widget">
+          <div class="user-avatar" id="sidebar-user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="sidebar-user-name">HR Admin</div>
+            <div class="user-role" id="sidebar-user-role">Superadmin</div>
+          </div>
+          <button class="btn-action btn-logout" title="Sign Out" style="background: rgba(255,255,255,0.1); color: #fff; border: none;">
+            🚪
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Shell -->
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle-btn" id="menu-toggle">☰</button>
+          <h1 class="page-title">Client Projects & Productivity Command</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-outline btn-sm" id="btn-open-new-task">➕ New Task</button>
+          <button class="btn btn-gold btn-sm" id="btn-open-log-timesheet">⏱️ Log Timesheet</button>
+          <button class="btn btn-outline btn-sm" id="btn-open-flag-blocker">🚨 Flag Blocker</button>
+        </div>
+      </header>
+
+      <div class="page-container">
+        
+        <!-- RED ZONE BOTTLENECK ESCALATION BANNER -->
+        <div class="red-zone-banner" id="red-zone-wrapper">
+          <div class="red-zone-header">
+            <div class="red-zone-title">
+              <span>🚨</span> THE RED ZONE: Active Client Blockers & Bottlenecks
+            </div>
+            <span class="badge" style="background:#fff; color:#b91c1c; font-weight:bold;" id="red-zone-count">0 Blocked</span>
+          </div>
+          <div class="red-zone-grid" id="red-zone-grid">
+            <div style="color:rgba(255,255,255,0.8); font-size:13px;">No critical bottlenecks flagged across active projects.</div>
+          </div>
+        </div>
+
+        <!-- Bird's Eye KPI Metrics Cards -->
+        <div class="efficiency-card-grid">
+          <div class="eff-card">
+            <div style="font-size:12px; color:#64748b; font-weight:600;">ACTIVE CLIENT PROJECTS</div>
+            <div class="eff-card-val" id="stat-active-proj-count">0</div>
+            <div style="font-size:12px; color:#10b981;">100% On-Track Milestones</div>
+          </div>
+          <div class="eff-card">
+            <div style="font-size:12px; color:#64748b; font-weight:600;">TOTAL BILLED HOURS TODAY</div>
+            <div class="eff-card-val" id="stat-total-billed-today">0.0 hrs</div>
+            <div style="font-size:12px; color:#64748b;">Logged across all client tasks</div>
+          </div>
+          <div class="eff-card">
+            <div style="font-size:12px; color:#64748b; font-weight:600;">UNDERUTILIZED STAFF (&lt; 4H)</div>
+            <div class="eff-card-val" style="color:#ef4444;" id="stat-underutilized-count">0</div>
+            <div style="font-size:12px; color:#ef4444;">Flagged for idle capacity</div>
+          </div>
+          <div class="eff-card">
+            <div style="font-size:12px; color:#64748b; font-weight:600;">BURNOUT RISK (10H+)</div>
+            <div class="eff-card-val" style="color:#f59e0b;" id="stat-burnout-count">0</div>
+            <div style="font-size:12px; color:#f59e0b;">Overworking intervention flag</div>
+          </div>
+        </div>
+
+        <!-- Employee Efficiency & Productivity Table -->
+        <div class="table-card" style="margin-bottom:25px;">
+          <div class="table-header">
+            <div>
+              <h3 class="table-title">Employee Efficiency & Attendance Matching</h3>
+              <p style="font-size:12px; color:#64748b; margin:3px 0 0 0;">Compares Biometric Present Hours against Client Work Hours logged.</p>
+            </div>
+            <input type="date" id="efficiency-date-filter" class="form-control" style="padding:4px 8px; font-size:12px;">
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Attendance Status</th>
+                  <th>Biometric Present</th>
+                  <th>Client Work Logged</th>
+                  <th>Utilization Ratio</th>
+                  <th>Work Health Status</th>
+                </tr>
+              </thead>
+              <tbody id="efficiency-tbody">
+                <tr><td colspan="6" style="text-align:center; padding:20px;">Loading efficiency metrics...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Active Client Projects Progress Table -->
+        <div class="table-card">
+          <div class="table-header">
+            <h3 class="table-title">Active Client Projects Progress</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Project Name</th>
+                  <th>Client</th>
+                  <th>Project Manager</th>
+                  <th>Tasks Overview</th>
+                  <th>Completion %</th>
+                  <th>Logged / Budget</th>
+                </tr>
+              </thead>
+              <tbody id="projects-tbody">
+                <tr><td colspan="6" style="text-align:center; padding:20px;">Loading projects...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- New Task Modal -->
+  <div class="modal-overlay modal" id="new-task-modal" style="display: none;">
+    <div class="modal-box modal-dialog" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title">➕ Create Client Task</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('new-task-modal').classList.remove('active');">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="new-task-form">
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Client <span style="color: var(--danger);">*</span></label>
+              <input type="text" class="form-control" id="nt-client" list="nt-client-list" placeholder="e.g. Acme Corp" required>
+              <datalist id="nt-client-list"></datalist>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Project <span style="color: var(--danger);">*</span></label>
+              <input type="text" class="form-control" id="nt-project" list="nt-project-list" placeholder="e.g. Website Redesign" required>
+              <datalist id="nt-project-list"></datalist>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Task Title <span style="color: var(--danger);">*</span></label>
+            <input type="text" class="form-control" id="nt-title" placeholder="e.g. Build login page" required>
+          </div>
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Assign To <span style="color: var(--danger);">*</span></label>
+              <select class="form-control" id="nt-emp" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Estimated Hours</label>
+              <input type="number" step="0.5" min="0" class="form-control" id="nt-hours" value="8">
+            </div>
+          </div>
+          <div class="modal-footer" style="margin-top: 15px; padding: 12px 0 0 0; background: none; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('new-task-modal').classList.remove('active');">Cancel</button>
+            <button type="submit" class="btn btn-primary">💾 Create Task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timesheet Modal -->
+  <div class="modal-overlay modal" id="log-timesheet-modal" style="display: none;">
+    <div class="modal-box modal-dialog" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⏱️ Log Daily Client Timesheet</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('log-timesheet-modal').style.display='none'; document.getElementById('log-timesheet-modal').classList.remove('active');">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="log-timesheet-form">
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Employee <span style="color: var(--danger);">*</span></label>
+            <select class="form-control" id="ts-emp-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Assigned Client Task <span style="color: var(--danger);">*</span></label>
+            <select class="form-control" id="ts-task-select" required></select>
+            <div id="ts-no-tasks" style="display:none; font-size:12px; color:#b45309; margin-top:6px;">
+              No client tasks exist yet. Use <strong>➕ New Task</strong> to create one first.
+            </div>
+          </div>
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Work Date <span style="color: var(--danger);">*</span></label>
+              <input type="date" class="form-control" id="ts-work-date" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Hours Spent <span style="color: var(--danger);">*</span></label>
+              <input type="number" step="0.25" min="0.25" max="24" class="form-control" id="ts-hours" placeholder="e.g. 4.5" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Task Progress Status</label>
+            <select class="form-control" id="ts-status-select">
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="UNDER_REVIEW">Under Review</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Work Description / Deliverables <span style="color: var(--danger);">*</span></label>
+            <textarea class="form-control" id="ts-desc" rows="3" placeholder="Summary of client deliverables accomplished..." required></textarea>
+          </div>
+          <div class="modal-footer" style="margin-top: 15px; padding: 12px 0 0 0; background: none; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('log-timesheet-modal').style.display='none'; document.getElementById('log-timesheet-modal').classList.remove('active');">Cancel</button>
+            <button type="submit" class="btn btn-primary">💾 Save Timesheet Entry</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flag Blocker Modal -->
+  <div class="modal-overlay modal" id="flag-blocker-modal" style="display: none;">
+    <div class="modal-box modal-dialog" style="max-width: 540px;">
+      <div class="modal-header" style="background: #fee2e2; border-bottom: 1px solid #fecaca;">
+        <h3 class="modal-title" style="color: #991b1b;">🚨 Flag Task Bottleneck / Blocker</h3>
+        <button type="button" class="modal-close" style="color: #991b1b;" onclick="document.getElementById('flag-blocker-modal').style.display='none'; document.getElementById('flag-blocker-modal').classList.remove('active');">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="flag-blocker-form">
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Employee <span style="color: var(--danger);">*</span></label>
+            <select class="form-control" id="blocker-emp-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Blocked Task <span style="color: var(--danger);">*</span></label>
+            <select class="form-control" id="blocker-task-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Blocker Category <span style="color: var(--danger);">*</span></label>
+            <select class="form-control" id="blocker-category-select" required>
+              <option value="WAITING_CLIENT_APPROVAL">Waiting for Client Approval</option>
+              <option value="MISSING_ASSETS_SPEC">Missing Assets / Specs</option>
+              <option value="SERVER_INFRA_ISSUE">Server / Infrastructure Down</option>
+              <option value="DEPENDENCY_ON_TEAM">Dependency on Other Team</option>
+              <option value="BUDGET_SCOPE_CREEP">Budget / Scope Creep</option>
+              <option value="OTHER">Other Impediment</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">Detailed Impediment Description <span style="color: var(--danger);">*</span></label>
+            <textarea class="form-control" id="blocker-reason-text" rows="3" placeholder="Explain what is blocking progress and what intervention is needed..." required></textarea>
+          </div>
+          <div class="modal-footer" style="margin-top: 15px; padding: 12px 0 0 0; background: none; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('flag-blocker-modal').style.display='none'; document.getElementById('flag-blocker-modal').classList.remove('active');">Cancel</button>
+            <button type="submit" class="btn btn-danger">🚨 Escalate Blocker to HR & PM</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js?v=3.1"></script>
+  <script src="/js/auth.js?v=3.1"></script>
+  <script src="/js/productivity.js?v=3.1"></script>
+</body>
+</html>

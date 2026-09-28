@@ -1,0 +1,48 @@
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+
+# Python / Backend
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+backend/.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Virtual Environments
+venv/
+.venv/
+ENV/
+env/
+
+# Environment Variables & Secrets
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Generated / Temp Data
+backend/data/temp_imports/*
+!backend/data/temp_imports/.gitkeep
+backend/data/generated_reports/*
+!backend/data/generated_reports/.gitkeep
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log

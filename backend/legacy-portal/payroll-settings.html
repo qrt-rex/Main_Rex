@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rexera HR - Payroll Settings, SMTP & Compliance</title>
+  <link rel="stylesheet" href="/css/main.css?v=3.1">
+  <link rel="stylesheet" href="/css/dashboard.css?v=3.1">
+  <link rel="stylesheet" href="/css/tables.css?v=3.1">
+  <link rel="stylesheet" href="/css/forms.css?v=3.1">
+  <link rel="stylesheet" href="/css/responsive.css?v=3.1">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+  <style>
+    .tab-bar {
+      display: flex;
+      gap: 10px;
+      border-bottom: 2px solid #e2e8f0;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      font-size: 14px;
+      font-weight: 700;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      color: #09234b;
+      border-bottom-color: #09234b;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <img src="/assets/logo.png" alt="Rexera Logo" onerror="this.src='/logo.png'">
+        <span class="brand-text">REX<span>ERA</span></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Core Operations</div>
+        <a href="/dashboard.html" class="nav-link">
+          <span>📊</span> Dashboard
+        </a>
+        <a href="/attendance.html" class="nav-link">
+          <span>⏰</span> Attendance & Time
+        </a>
+        <a href="/leaves.html" class="nav-link">
+          <span>🌴</span> Leave Management
+        </a>
+        <a href="/productivity.html" class="nav-link">
+          <span>💼</span> Client Productivity
+        </a>
+
+        <div class="nav-section-title">Reports & Tools</div>
+        <a href="/performance-reports.html" class="nav-link">
+          <span>📈</span> Performance Reports
+        </a>
+        <a href="/bulk-import.html" class="nav-link">
+          <span>📥</span> Smart Bulk Import
+        </a>
+        <a href="/broadcasts.html" class="nav-link">
+          <span>📢</span> Company Broadcasts
+        </a>
+
+        <div class="nav-section-title">Payroll System</div>
+        <a href="/payroll.html" class="nav-link">
+          <span>💰</span> Payroll Operations
+        </a>
+        <a href="/advances-loans.html" class="nav-link">
+          <span>💳</span> Advances & Loans
+        </a>
+        <a href="/salary-slip.html" class="nav-link">
+          <span>📄</span> Generate Payslip
+        </a>
+        <a href="/salary-report.html" class="nav-link">
+          <span>📈</span> Salary Register
+        </a>
+        <a href="/payroll-settings.html" class="nav-link active">
+          <span>⚙️</span> Payroll Settings
+        </a>
+
+        <div class="nav-section-title">System</div>
+        <a href="/logs.html" class="nav-link">
+          <span>📋</span> Activity Logs
+        </a>
+
+        <div class="nav-section-title">Workforce & Recruitment</div>
+        <a href="/employees.html" class="nav-link">
+          <span>👥</span> Employees Directory
+        </a>
+        <a href="/candidates.html" class="nav-link">
+          <span>🎯</span> Recruitment Pipeline
+        </a>
+        <a href="/interns.html" class="nav-link">
+          <span>🎓</span> Interns & Trainees
+        </a>
+        <a href="/add-employee.html" class="nav-link">
+          <span>➕</span> Add Employee
+        </a>
+        <a href="/joining-login.html" target="_blank" class="nav-link">
+          <span>🔗</span> Candidate Portal ↗
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile-widget">
+          <div class="user-avatar" id="sidebar-user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="sidebar-user-name">HR Admin</div>
+            <div class="user-role" id="sidebar-user-role">Superadmin</div>
+          </div>
+          <button class="btn-action btn-logout" id="btn-logout" title="Sign Out" style="background: rgba(255,255,255,0.1); color: #fff; border: none;">
+            🚪
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="app-main">
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle-btn" id="menu-toggle">☰</button>
+          <h1 class="page-title">Payroll Configuration, SMTP & Compliance</h1>
+        </div>
+        <div class="topbar-right">
+          <a href="/payroll.html" class="btn btn-outline btn-sm">⚙️ Payroll Operations</a>
+        </div>
+      </header>
+
+      <div class="page-container">
+        
+        <!-- Tab Bar -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="tab-rules">⚙️ Payroll Calculation Rules</button>
+          <button class="tab-btn" data-tab="tab-smtp">✉️ SMTP Server & Dispatch</button>
+          <button class="tab-btn" data-tab="tab-templates">📝 Email Template Editor</button>
+          <button class="tab-btn" data-tab="tab-logs">📜 Audit & Delivery Logs</button>
+        </div>
+
+        <!-- ==========================================
+             TAB 1: CALCULATION RULES & STATUTORY
+             ========================================== -->
+        <div id="tab-rules" class="tab-content active">
+          <div class="card" style="max-width: 850px; margin: 0 auto;">
+            <div class="card-header">
+              <h3 class="card-title">🏢 Company Payroll & Statutory Deduction Rules</h3>
+            </div>
+            <form id="form-payroll-rules">
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">Company Legal Name</label>
+                  <input type="text" id="cfg-comp-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Company Official Email</label>
+                  <input type="email" id="cfg-comp-email" class="form-control" required>
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">Official Phone</label>
+                  <input type="text" id="cfg-comp-phone" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Currency Symbol / Code</label>
+                  <input type="text" id="cfg-currency" class="form-control" value="INR (₹)" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Corporate Registered Address</label>
+                <input type="text" id="cfg-comp-address" class="form-control">
+              </div>
+
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+
+              <h4 style="margin: 0 0 15px 0; color: #09234b; font-size: 14px; text-transform: uppercase;">Statutory & Attendance Formulas</h4>
+
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label class="form-label">Standard Month Working Days</label>
+                  <input type="number" id="cfg-working-days" class="form-control" value="30" min="20" max="31">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Proration Method</label>
+                  <select id="cfg-proration" class="form-select">
+                    <option value="calendar_days">Calendar Days (Standard)</option>
+                    <option value="actual_working_days">Actual Working Days</option>
+                    <option value="standard_30">Fixed 30-Day Base</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Late Mark Policy</label>
+                  <select id="cfg-late-rule" class="form-select">
+                    <option value="count_tiers">Tiered: 3 Late Marks = 0.5 Day</option>
+                    <option value="fixed">Fixed: ₹100 per Late Mark</option>
+                    <option value="none">No Automatic Deduction</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label class="form-label">Default Professional Tax (PT)</label>
+                  <input type="number" id="cfg-pt-amount" class="form-control" value="200.0" step="1">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Overtime Rate Multiplier</label>
+                  <input type="number" id="cfg-ot-multiplier" class="form-control" value="1.5" step="0.1">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Payslip Prefix Sequence</label>
+                  <input type="text" id="cfg-payslip-prefix" class="form-control" value="REX-PAY">
+                </div>
+              </div>
+
+              <div style="margin-top: 20px; text-align: right;">
+                <button type="submit" class="btn btn-primary">💾 Save Payroll Configuration</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- ==========================================
+             TAB 2: SMTP SETTINGS
+             ========================================== -->
+        <div id="tab-smtp" class="tab-content">
+          <div class="card" style="max-width: 750px; margin: 0 auto;">
+            <div class="card-header">
+              <h3 class="card-title">✉️ SMTP Outbound Mail Server Configuration</h3>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+              Configure authenticated SMTP mail delivery to send individual encrypted payslips to employees. Enable <strong>Simulation Mode</strong> to safely test without sending live external emails.
+            </p>
+
+            <form id="form-smtp">
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">SMTP Host Server <span class="required">*</span></label>
+                  <input type="text" id="smtp-host" class="form-control" placeholder="e.g. smtp.gmail.com" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">SMTP Port <span class="required">*</span></label>
+                  <input type="number" id="smtp-port" class="form-control" placeholder="587" required>
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">SMTP Username / Email</label>
+                  <input type="text" id="smtp-user" class="form-control" placeholder="e.g. hr@rexera.co.in">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">SMTP App Password</label>
+                  <input type="password" id="smtp-password" class="form-control" placeholder="••••••••">
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label">Sender Display Name</label>
+                  <input type="text" id="smtp-from-name" class="form-control" value="Rexera HR & Payroll">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Sender Email Address</label>
+                  <input type="email" id="smtp-from-email" class="form-control" value="hr@rexera.co.in">
+                </div>
+              </div>
+
+              <div class="form-group" style="background: #f8fafc; padding: 12px 16px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                  <input type="checkbox" id="smtp-dev-mode">
+                  <div>
+                    <strong style="color: #09234b;">Development / Simulation Mode</strong>
+                    <div style="font-size: 12px; color: #64748b;">Simulate successful email delivery instantly in server console without sending external SMTP traffic.</div>
+                  </div>
+                </label>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-outline" id="btn-test-smtp">⚡ Test SMTP Connection</button>
+                <button type="submit" class="btn btn-primary">💾 Save SMTP Settings</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- ==========================================
+             TAB 3: EMAIL TEMPLATES
+             ========================================== -->
+        <div id="tab-templates" class="tab-content">
+          <div class="card" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-header">
+              <h3 class="card-title">📝 Payslip Email Template Customization</h3>
+            </div>
+            
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 12px 16px; border-radius: var(--radius-md); font-size: 12px; margin-bottom: 20px;">
+              <strong>Supported Template Variables:</strong><br>
+              <code>{{employee_name}}</code>, <code>{{employee_code}}</code>, <code>{{department}}</code>, <code>{{month}}</code>, <code>{{year}}</code>, <code>{{net_salary}}</code>, <code>{{company_name}}</code>, <code>{{payslip_number}}</code>
+            </div>
+
+            <form id="form-template">
+              <div class="form-group">
+                <label class="form-label">Email Subject Line Template <span class="required">*</span></label>
+                <input type="text" id="tpl-subject" class="form-control" value="Salary Payslip - {{month}} {{year}} - {{employee_code}}" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Email Body Content <span class="required">*</span></label>
+                <textarea id="tpl-body" class="form-control" rows="8" required style="font-family: inherit; font-size: 13px;"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                <button type="button" class="btn btn-outline" id="btn-preview-tpl">👁️ Preview Formatted Email</button>
+                <button type="submit" class="btn btn-primary">💾 Save Email Template</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- ==========================================
+             TAB 4: AUDIT & DELIVERY LOGS
+             ========================================== -->
+        <div id="tab-logs" class="tab-content">
+          <div class="table-card" style="margin-bottom: 24px;">
+            <div class="table-toolbar">
+              <h3 style="margin:0; font-size:15px; color:#09234b;">📜 Sensitive Payroll Action Audit Trail</h3>
+              <button class="btn btn-sm btn-outline" id="btn-refresh-audit">🔄 Refresh</button>
+            </div>
+            <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Entity Type</th>
+                    <th>Target Employee</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-table-body">
+                  <tr><td colspan="5" style="text-align:center; padding:20px;">Loading audit logs...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <h3 style="margin:0; font-size:15px; color:#09234b;">✉️ Payslip Email Transmission History</h3>
+              <button class="btn btn-sm btn-outline" id="btn-refresh-email-logs">🔄 Refresh</button>
+            </div>
+            <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Dispatched At</th>
+                    <th>Employee</th>
+                    <th>Recipient Email</th>
+                    <th>Payslip #</th>
+                    <th>Period</th>
+                    <th style="text-align:center;">Status</th>
+                    <th>Diagnostic Message</th>
+                  </tr>
+                </thead>
+                <tbody id="email-logs-table-body">
+                  <tr><td colspan="7" style="text-align:center; padding:20px;">Loading transmission logs...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast Notification Hub -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/js/api.js?v=3.1"></script>
+  <script src="/js/auth.js?v=3.1"></script>
+  <script src="/js/payroll-settings.js?v=3.1"></script>
+</body>
+</html>
