@@ -30,5 +30,17 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     email: EmailStr
-    otp: str
+    otp: Optional[str] = None
+    token: Optional[str] = None
     new_password: str = Field(min_length=8, max_length=128)
+
+class GoogleAuthRequest(BaseModel):
+    credential: Optional[str] = None
+    access_token: Optional[str] = None
+    email: Optional[str] = None
+
+
+class GoogleConfigResponse(BaseModel):
+    client_id: Optional[str] = None
+    allowed_domains: list[str]
+

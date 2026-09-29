@@ -72,6 +72,7 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<RedirectIfAuthenticated><LoginPage /></RedirectIfAuthenticated>} />
+                <Route path="/reset-password" element={<RedirectIfAuthenticated><LoginPage /></RedirectIfAuthenticated>} />
                 {/* Public pages (no sign-in): candidate application and new-joiner onboarding. */}
                 <Route path="/apply" element={<Suspense fallback={<PageSkeleton />}><CandidateApply /></Suspense>} />
                 <Route path="/joining" element={<Suspense fallback={<PageSkeleton />}><JoiningPortal /></Suspense>} />

@@ -391,6 +391,9 @@ class DatabaseManager:
             engine = create_async_engine(
                 uri,
                 pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+                pool_recycle=300,
                 connect_args={
                     "statement_cache_size": 0,
                     **({} if is_local else {"ssl": "require"}),
@@ -405,8 +408,19 @@ class DatabaseManager:
             self.db = object()  # marker: postgres path is used via get_collection()
             async with engine.begin() as conn:
                 await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {settings.DB_SCHEMA}"))
-            for name in KNOWN_COLLECTIONS:
-                await PostgresDocumentAdapter(name, engine).ensure_table()
+                for name in KNOWN_COLLECTIONS:
+                    valid_name = _validate_table_name(name)
+                    tbl = f"{settings.DB_SCHEMA}.col_{valid_name}"
+                    await conn.execute(text(
+                        f"CREATE TABLE IF NOT EXISTS {tbl} ("
+                        f"id TEXT PRIMARY KEY, "
+                        f"data JSONB NOT NULL, "
+                        f"created_at TIMESTAMPTZ DEFAULT now())"
+                    ))
+                    await conn.execute(text(
+                        f"CREATE INDEX IF NOT EXISTS idx_col_{valid_name}_data ON {tbl} USING gin(data)"
+                    ))
+                    _ensured_tables.add(name)
             logger.info("Successfully connected to PostgreSQL.")
         except Exception as e:
             # Postgres is the only supported store: fail fast rather than run on a local file.

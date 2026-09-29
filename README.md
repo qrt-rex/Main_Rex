@@ -84,6 +84,7 @@ cd backend && python -m pyflakes app
 | `COMPANY_WEBSITE` | Address the app is served from; joining emails link to `{COMPANY_WEBSITE}/joining`. |
 | `CORS_ORIGINS` | Allowed browser origins, e.g. `["*"]` or `["http://localhost:5173"]`. |
 | `DEFAULT_ADMIN_*` | The Super Admin account created on first start. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Sign in with Google*. Only accounts on the domains in `ALLOWED_GOOGLE_DOMAINS` (rexera.co.in, rexera.in, rexera.com) are accepted. |
 
 ---
 
@@ -102,6 +103,13 @@ There are seven user types:
 | IT | `it` | `/dashboard/it` |
 
 Accounts saved under the older name `employee` are read as Employee / Sales Person.
+
+People sign in at `/login` in one of two ways:
+
+- email, password and a 6-digit code sent to their email
+- *Sign in with Google* using a Rexera Workspace account
+
+*Forgot password* emails a reset link that opens `/reset-password`.
 
 - **Roles & permissions** (`/admin/permissions`): a Super Admin decides what each user type can do.
   Changes apply within 30 seconds and are enforced by the server on every request.

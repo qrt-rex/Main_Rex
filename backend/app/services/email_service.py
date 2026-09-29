@@ -322,6 +322,40 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; color: 
         return ok
 
     @classmethod
+    async def send_password_reset_email(cls, to_email: str, reset_url: str) -> bool:
+        subject = "Reset Your Rexera Account Password"
+        body = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px 16px;">
+            <div style="max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);">
+                <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; padding: 28px 24px; text-align: center; border-bottom: 1px solid #4338ca;">
+                    <h2 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 1px; color: #ffffff;">REXERA CRM</h2>
+                    <p style="margin: 6px 0 0 0; font-size: 13px; color: #c7d2fe;">Password Reset Request</p>
+                </div>
+                <div style="padding: 32px 28px; line-height: 1.6; font-size: 14px; color: #cbd5e1;">
+                    <p style="margin-top: 0; font-size: 15px; font-weight: 600; color: #ffffff;">Hello,</p>
+                    <p>We received a request to reset the password for your Rexera CRM account (<strong>{to_email}</strong>).</p>
+                    <p>Click the button below to set a new password:</p>
+                    <div style="text-align: center; margin: 32px 0;">
+                        <a href="{reset_url}" style="background: #4f46e5; color: #ffffff; padding: 14px 36px; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.45);">
+                            Reset Password &rarr;
+                        </a>
+                    </div>
+                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">If the button above does not work, copy and paste this link into your browser:</p>
+                    <p style="font-size: 12px; word-break: break-all; background: #0f172a; padding: 12px 14px; border-radius: 8px; border: 1px solid #334155; margin-top: 0;">
+                        <a href="{reset_url}" style="color: #818cf8; text-decoration: underline;">{reset_url}</a>
+                    </p>
+                    <p style="font-size: 12px; color: #64748b; margin-top: 24px;">This link will expire in <strong>15 minutes</strong>. If you did not make this request, you can safely ignore this email.</p>
+                </div>
+                <div style="background: #0f172a; padding: 16px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px solid #1e293b;">
+                    <p style="margin: 0;">{settings.COMPANY_NAME} • Automated Security Dispatch</p>
+                </div>
+            </div>
+        </div>
+        """
+        ok, err = await cls.send_email(to_email, subject, body, allow_saved_smtp=False)
+        return ok
+
+    @classmethod
     async def send_joining_token_email(cls, to_email: str, candidate_name: str, token: str, position: str = "") -> bool:
         subject = f"Welcome to Rexera - Your Onboarding Joining Token: {token}"
         candidate_name, position, token = html.escape(candidate_name or ""), html.escape(position or ""), html.escape(token)

@@ -34,9 +34,12 @@ interface AuthContextValue {
   startLogin: (email: string, password: string) => Promise<LoginStep1>;
   verifyOtp: (email: string, otp: string, tempToken: string) => Promise<void>;
   resendOtp: (email: string, tempToken: string) => Promise<string | null>;
+  loginWithGoogle: (payload: { credential?: string; access_token?: string; email?: string }) => Promise<void>;
   logout: (reason?: SignOutReason) => Promise<void>;
+
   refresh: () => Promise<void>;
 }
+
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -179,6 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.debug_otp;
   }, []);
 
+  const loginWithGoogle = useCallback(async (payload: { credential?: string; access_token?: string; email?: string }) => {
+    const res = await api.post<{ access_token: string; email: string; role: string }>('/api/auth/google', payload);
+    tokenStore.set(res.access_token);
+    setSignOutReason(null);
+    await loadMe();
+  }, [loadMe]);
+
   const value = useMemo<AuthContextValue>(() => {
     const granted = new Set(user?.permissions ?? []);
     return {
@@ -190,10 +200,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       startLogin,
       verifyOtp,
       resendOtp,
+      loginWithGoogle,
       logout,
       refresh,
     };
-  }, [status, user, signOutReason, startLogin, verifyOtp, resendOtp, logout, refresh]);
+  }, [status, user, signOutReason, startLogin, verifyOtp, resendOtp, loginWithGoogle, logout, refresh]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

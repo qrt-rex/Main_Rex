@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Date | 29 September 2026 |
-| Build under test | `main` (last commit `c2f83a6`) plus the working-tree changes of this QA cycle |
-| Backend | FastAPI app in `backend/` (656 functions, 219 API route/method pairs) |
+| Build under test | `main` after merging the Google Workspace sign-in and password-reset-link commits (`59bddaf`, `3165116`, `5e6f03d`) |
+| Backend | FastAPI app in `backend/` (222 API route/method pairs) |
 | Frontend | React 19 + Vite app in `frontend/` (42 pages) |
 | Environment | Windows 11, Python 3.11, Node / Vite 8. All runs used an in-memory data store: no real database was written and no email was sent. |
 | Result | **Pass.** 2 defects found and fixed during this cycle (1 high, 1 medium); no open defects. Open questions are listed in section 7. |
@@ -15,13 +15,13 @@
 
 | Check | Scope | Result |
 |---|---|---|
-| Automated backend suite | 300 test cases across 22 areas (section 3) | **300 passed, 0 failed** |
-| Function coverage | Backend functions executed by the suite | **571 of 656 (87%)**; the rest explained in section 6 |
-| Access-control sweep | Every API route × (signed out + 7 user types) | **1,752 checks, 0 mismatches, 0 server errors** |
+| Automated backend suite | 304 test cases across 23 areas (section 3) | **304 passed, 0 failed** |
+| Function coverage | Backend functions executed by the suite (measured before the Google sign-in merge) | **571 of 656 (87%)**; the rest explained in section 6 |
+| Access-control sweep | Every API route × (signed out + 7 user types) | **1,776 checks, 0 mismatches, 0 server errors** |
 | Screen sweep | 42 pages × 7 user types in a real browser | **294 page visits, 0 errors, 0 failed API calls, 0 script errors** |
 | Python static analysis | `pyflakes` over `backend/app` | **0 findings** |
 | TypeScript | `tsc -b` | **0 errors** |
-| Frontend lint | `oxlint src` | **0 errors**, 32 advisory warnings (section 7) |
+| Frontend lint | `oxlint src` | **0 errors**, 34 advisory warnings (section 7) |
 | Production build | `vite build` | **Succeeds** |
 
 The automated test suite was removed from the repository after this run, as requested. A copy is kept
@@ -36,7 +36,7 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
    through the HTTP API.
 2. **Function coverage**: Python's profiler hook recorded every backend function that ran during the
    suite, then compared against every function defined in `backend/app`.
-3. **Access-control sweep**: for each of the 219 route/method pairs, a request was sent signed out and
+3. **Access-control sweep**: for each of the 222 route/method pairs, a request was sent signed out and
    as each of the seven user types. Each response was checked against the access rules in
    `rbac_service.ROUTE_RULES`:
    - Signed-out requests to protected routes must get 401.
@@ -72,6 +72,7 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
 | Reports | 24 | Individual and company performance reports, exports, validation |
 | Attendance & leave | 22 | Punch classification (present/late/half day/early logout), shift rules, leave balances, paid vs LOP split, overlap checks, approved leave marks attendance |
 | Authentication | 15 | Password + emailed code sign-in, resend, lockouts, one-time codes cannot be replayed or brute-forced, password reset, logout revokes the session, deactivated accounts rejected, rate limits |
+| Google Workspace sign-in | 4 | Only rexera.co.in / rexera.in / rexera.com accounts accepted, other domains refused, session works |
 | Onboarding (joining portal) | 13 | Token issue/validate/expire/reuse, emailed code required before submission, ID/bank validation, employee created on completion |
 | Automations | 13 | Scheduled reminder rules and their switches |
 | Productivity & broadcasts | 12 | Tasks, timesheets, blockers; broadcast publishing, HTML sanitising, audiences, acknowledgement |
@@ -92,17 +93,17 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
 
 ## 4. Access control results
 
-Routes each user type can reach, out of 219. All matched the rules.
+Routes each user type can reach, out of 222. All matched the rules.
 
 | User type | Allowed | Refused |
 |---|---|---|
-| Super Admin | 219 | 0 |
-| HR | 171 | 48 |
-| Admin / Accounting | 122 | 97 |
-| Employee / Sales Person | 69 | 150 |
-| Legal | 56 | 163 |
-| IT | 27 | 192 |
-| Operation Team | 25 | 194 |
+| Super Admin | 222 | 0 |
+| HR | 174 | 48 |
+| Admin / Accounting | 125 | 97 |
+| Employee / Sales Person | 72 | 150 |
+| Legal | 59 | 163 |
+| IT | 30 | 192 |
+| Operation Team | 28 | 194 |
 
 Pages each user type can open (screen sweep; every other page correctly shows "not found"):
 
@@ -126,6 +127,7 @@ Public pages `/apply` and `/joining` open for everyone, signed in or not.
 |---|---|---|---|---|
 | QA-01 | **High** | Employees / Sales Persons could open **Payroll** and **Payslips** and see every employee's salary. The default Sales role had the organisation-wide "View payroll, payslips & salary register" permission. | Payroll view/process/approve are now fixed rules for HR, Admin / Accounting and Super Admin only. They are removed from the Sales defaults and refused by the role matrix and per-person Allow. Everyone can still open **their own** payslip, and a "View payslip" button was added on their dashboard. | Automated check plus sweeps: staff get 403 on the register; they can open their own payslip, and someone else's reads as not found. |
 | QA-02 | Medium | The role dashboard loaded its data conditionally, which breaks React's rules of hooks. A Super Admin switching between the Legal dashboard and another could crash the page. It also made an unused request on the HR dashboard. | The layout is chosen first; data is loaded only by the dashboards that use it. | Lint error cleared; screen sweep. |
+| QA-04 | Low | The Google sign-in test (from the merged commits) checked the new session with `/api/auth/me`, a duplicate endpoint removed in this cycle. The two new Google modules also had unused imports. | Test uses `/api/rbac/me`, which the app uses; imports removed. | Suite 304/304. |
 | QA-03 | Low | One automated test expected the approver name "admin" while the default Super Admin username is "superadmin". The test was wrong, not the app. | Test compares against the configured username. | Suite 300/300. |
 
 Hygiene issues removed as part of the clean-up (not user-visible defects):
@@ -173,7 +175,7 @@ Hygiene issues removed as part of the clean-up (not user-visible defects):
    - Set `COMPANY_WEBSITE` to the address the app is served from; joining emails link there.
 5. **Automated tests.** The suite was removed on request. Reinstating it, or running it in CI from the
    backup, is strongly recommended before further changes.
-6. **Lint advisories (32 warnings, no errors).**
+6. **Lint advisories (34 warnings, no errors; 2 are in the new login page).**
    - 16 "set state in effect" (performance style)
    - 7 "only export components" (hot-reload only)
    - 4 "missing key", all false positives on data arrays passed to a keyed list
