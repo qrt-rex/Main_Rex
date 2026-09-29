@@ -47,16 +47,7 @@ function GoogleIcon({ className = 'h-5 w-5' }: { className?: string }) {
 }
 
 function DevCode({ code }: { code: string | null }) {
-  if (!code) return null;
-  return (
-    <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/90 p-3 text-xs text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/40 dark:text-indigo-300 animate-pop-in">
-      <Info size={15} className="mt-0.5 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
-      <div>
-        <span className="font-semibold">Simulated Verification Code:</span>{' '}
-        <span className="font-mono font-bold text-sm tracking-widest text-indigo-700 dark:text-indigo-300">{code}</span>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 export function LoginPage() {
