@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MINUTES: int = 10
     SESSION_TIMEOUT_MINUTES: int = 60  # Auto-logout after this many minutes of inactivity
 
+    # Google Authentication (OAuth 2.0)
+    GOOGLE_CLIENT_ID: Optional[str] = "1043956921196-h9hblrg0n1tvrk8tmtsvl5lq8njq5okj.apps.googleusercontent.com"
+    GOOGLE_CLIENT_SECRET: Optional[str] = ""
+    ALLOWED_GOOGLE_DOMAINS: List[str] = ["rexera.co.in", "rexera.in", "rexera.com"]
+
+
     # Default Admin
     DEFAULT_ADMIN_EMAIL: str = "superadmin@rexera.co.in"
     DEFAULT_ADMIN_PASSWORD: str = "QRT##11111"

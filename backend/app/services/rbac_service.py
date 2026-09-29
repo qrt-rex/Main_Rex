@@ -158,6 +158,8 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/auth/forgot-password"): PUBLIC,
     ("POST", "/api/auth/reset-password"): PUBLIC,
     ("GET", "/api/auth/session-config"): PUBLIC,
+    ("GET", "/api/auth/google/config"): PUBLIC,
+    ("POST", "/api/auth/google"): PUBLIC,
     ("GET", "/api/auth/me"): AUTHENTICATED,
     ("POST", "/api/auth/logout"): AUTHENTICATED,
     ("POST", "/api/auth/session-timeout"): AUTHENTICATED,

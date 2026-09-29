@@ -44,3 +44,14 @@ class AdminProfileResponse(BaseModel):
     role: str
     is_active: bool
     last_login: Optional[str] = None
+
+class GoogleAuthRequest(BaseModel):
+    credential: Optional[str] = None
+    access_token: Optional[str] = None
+    email: Optional[str] = None
+
+
+class GoogleConfigResponse(BaseModel):
+    client_id: Optional[str] = None
+    allowed_domains: list[str]
+

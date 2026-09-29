@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { 
   ArrowLeft, 
   Eye, 
@@ -9,7 +9,9 @@ import {
   User, 
   ShieldCheck, 
   Clock, 
-  Calendar
+  Calendar,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { api, ApiError } from '../lib/api';
@@ -17,7 +19,32 @@ import { useToast } from '../components/common/ToastContext';
 
 type Step = 'credentials' | 'otp' | 'forgot' | 'reset';
 
+const ALLOWED_DOMAINS = ['@rexera.co.in', '@rexera.in', '@rexera.com'];
+
 const errorText = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
+
+function GoogleIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+      />
+    </svg>
+  );
+}
 
 function DevCode({ code }: { code: string | null }) {
   if (!code) return null;
@@ -33,7 +60,7 @@ function DevCode({ code }: { code: string | null }) {
 }
 
 export function LoginPage() {
-  const { startLogin, verifyOtp, resendOtp, signOutReason } = useAuth();
+  const { startLogin, verifyOtp, resendOtp, loginWithGoogle, signOutReason } = useAuth();
   const { showToast } = useToast();
 
   const [step, setStep] = useState<Step>('credentials');
@@ -46,6 +73,109 @@ export function LoginPage() {
   const [tempToken, setTempToken] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Google OAuth state
+  const tokenClientRef = useRef<any>(null);
+  const [googleClientId, setGoogleClientId] = useState<string>('');
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [testGoogleEmail, setTestGoogleEmail] = useState('');
+  const [googleModalError, setGoogleModalError] = useState('');
+  const [googleModalBusy, setGoogleModalBusy] = useState(false);
+
+  // Fetch Google OAuth configuration
+  useEffect(() => {
+    api.get<{ client_id: string; allowed_domains: string[] }>('/api/auth/google/config')
+      .then((cfg) => {
+        if (cfg?.client_id) setGoogleClientId(cfg.client_id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Initialize Google OAuth2 Token Client for seamless custom-themed button
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    let timer: any;
+    const initClient = () => {
+      const gOauth2 = (window as any).google?.accounts?.oauth2;
+      if (!gOauth2) return false;
+      try {
+        tokenClientRef.current = gOauth2.initTokenClient({
+          client_id: googleClientId,
+          scope: 'openid email profile',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse?.error) {
+              setError(tokenResponse.error_description || 'Google sign-in was cancelled or failed.');
+              return;
+            }
+            if (tokenResponse?.access_token) {
+              run(async () => {
+                await loginWithGoogle({ access_token: tokenResponse.access_token });
+                showToast('Signed in with Google', 'success');
+              }, 'Google authentication failed.');
+            }
+          },
+        });
+        return true;
+      } catch (err) {
+        console.error('Google OAuth client init error:', err);
+        return false;
+      }
+    };
+
+    if (!initClient()) {
+      timer = setInterval(() => {
+        if (initClient()) clearInterval(timer);
+      }, 200);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [googleClientId, loginWithGoogle, showToast]);
+
+  const handleGoogleSignInClick = () => {
+    setError('');
+    if (tokenClientRef.current) {
+      tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
+    } else if (googleClientId && (window as any).google?.accounts?.oauth2) {
+      const tc = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: 'openid email profile',
+        callback: async (resp: any) => {
+          if (resp?.access_token) {
+            run(async () => {
+              await loginWithGoogle({ access_token: resp.access_token });
+              showToast('Signed in with Google', 'success');
+            }, 'Google authentication failed.');
+          }
+        },
+      });
+      tokenClientRef.current = tc;
+      tc.requestAccessToken({ prompt: 'select_account' });
+    } else {
+      setShowGoogleModal(true);
+    }
+  };
+
+  const handleTestGoogleLogin = async (overrideEmail?: string) => {
+    const targetEmail = overrideEmail ?? testGoogleEmail;
+    if (!targetEmail.trim()) {
+      setGoogleModalError('Please enter an email address to test.');
+      return;
+    }
+    setGoogleModalError('');
+    setGoogleModalBusy(true);
+    try {
+      await loginWithGoogle({ email: targetEmail.trim() });
+      showToast('Signed in with Google corporate account', 'success');
+      setShowGoogleModal(false);
+    } catch (err) {
+      setGoogleModalError(errorText(err, 'Google authentication failed.'));
+    } finally {
+      setGoogleModalBusy(false);
+    }
+  };
 
   // Digital Clock state (Indian Standard Time - New Delhi / IST)
   const [timeStr, setTimeStr] = useState<string>('');
@@ -260,80 +390,102 @@ export function LoginPage() {
 
                 {/* STEP 1: CREDENTIALS */}
                 {step === 'credentials' && (
-                  <form onSubmit={submitCredentials} noValidate className="space-y-5 animate-fade-in">
-                    {/* Email Input */}
-                    <div className="relative group">
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400 group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
-                        <User size={16} />
-                      </div>
-                      <input
-                        type="email"
-                        autoComplete="username"
-                        required
-                        autoFocus
-                        placeholder="Email or username"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-4 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                      />
-                    </div>
-
-                    {/* Password Input */}
-                    <div className="relative group">
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400 group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
-                        <Lock size={16} />
-                      </div>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        autoComplete="current-password"
-                        required
-                        placeholder="Password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-12 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                      />
+                  <div className="space-y-4 animate-fade-in">
+                    {/* Google Sign In Button - Styled strictly to theme */}
+                    <div className="space-y-3">
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                      >
-                        {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                      </button>
-                    </div>
-
-                    {error && (
-                      <p role="alert" className="text-xs font-semibold text-rose-400 pl-2 animate-pop-in">
-                        {error}
-                      </p>
-                    )}
-
-                    {/* Actions Row */}
-                    <div className="flex items-center justify-between pt-1">
-                      <button
-                        type="button"
-                        onClick={() => go('forgot')}
-                        className="text-xs font-semibold text-slate-400 hover:text-indigo-400 transition-colors"
-                      >
-                        Forgot your password?
-                      </button>
-
-                      <button
-                        type="submit"
+                        onClick={handleGoogleSignInClick}
                         disabled={busy}
-                        className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 hover:from-indigo-700 hover:to-indigo-800 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-60"
+                        className="group relative flex w-full items-center justify-center gap-3 rounded-full border border-slate-700 bg-[#0d1624] py-3.5 px-6 text-sm font-semibold text-white shadow-md transition-all hover:border-indigo-500/60 hover:bg-[#152136] hover:shadow-indigo-500/10 active:scale-[0.99] disabled:opacity-60 cursor-pointer"
                       >
-                        {busy ? (
-                          <div className="flex items-center gap-2">
-                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                            <span>Signing in...</span>
-                          </div>
-                        ) : (
-                          'Login'
-                        )}
+                        <GoogleIcon className="h-5 w-5 shrink-0" />
+                        <span>Sign in with Google</span>
                       </button>
+
+                      <div className="relative flex items-center justify-center pt-1">
+                        <div className="w-full border-t border-slate-800" />
+                        <span className="absolute bg-[#131e31] px-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                          or sign in with password
+                        </span>
+                      </div>
                     </div>
-                  </form>
+
+                    <form onSubmit={submitCredentials} noValidate className="space-y-4">
+                      {/* Email Input */}
+                      <div className="relative group">
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400 group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
+                          <User size={16} />
+                        </div>
+                        <input
+                          type="email"
+                          autoComplete="username"
+                          required
+                          autoFocus
+                          placeholder="Email or username"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-4 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                        />
+                      </div>
+
+                      {/* Password Input */}
+                      <div className="relative group">
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400 group-focus-within:bg-indigo-600 group-focus-within:text-white transition-all">
+                          <Lock size={16} />
+                        </div>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          required
+                          placeholder="Password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-12 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        >
+                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+
+                      {error && (
+                        <p role="alert" className="text-xs font-semibold text-rose-400 pl-2 animate-pop-in">
+                          {error}
+                        </p>
+                      )}
+
+                      {/* Actions Row */}
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => go('forgot')}
+                          className="text-xs font-semibold text-slate-400 hover:text-indigo-400 transition-colors"
+                        >
+                          Forgot your password?
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 hover:from-indigo-700 hover:to-indigo-800 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-60"
+                        >
+                          {busy ? (
+                            <div className="flex items-center gap-2">
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                              <span>Signing in...</span>
+                            </div>
+                          ) : (
+                            'Login'
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 )}
 
                 {/* STEP 2: 2FA OTP */}
@@ -494,6 +646,161 @@ export function LoginPage() {
         </div>
 
       </main>
+
+      {/* Google Authentication Setup / Testing Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700/80 bg-[#0d1624] p-6 shadow-2xl text-white space-y-5 animate-pop-in">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 border border-slate-700">
+                  <GoogleIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Google Authentication</h3>
+                  <p className="text-xs text-slate-400">Corporate Single Sign-On</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleModal(false);
+                  setGoogleModalError('');
+                }}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Allowed Domains Card */}
+            <div className="rounded-xl border border-indigo-900/60 bg-indigo-950/30 p-3.5 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
+                <ShieldCheck size={15} className="text-emerald-400 shrink-0" />
+                <span>Restricted Corporate Domains:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {ALLOWED_DOMAINS.map((domain) => (
+                  <span
+                    key={domain}
+                    className="inline-flex items-center rounded-md bg-indigo-900/50 px-2 py-0.5 text-xs font-mono font-medium text-indigo-200 border border-indigo-700/40"
+                  >
+                    {domain}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1">
+                Accounts from <span className="text-rose-400 font-semibold">@gmail.com</span>, <span className="text-rose-400 font-semibold">@outlook.com</span> or other personal domains are strictly rejected.
+              </p>
+            </div>
+
+            {/* Status Notice */}
+            {!googleClientId && (
+              <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-200">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>Google Client ID Pending</span>
+                </div>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Provide your <code className="text-amber-200 font-mono">GOOGLE_CLIENT_ID</code> and <code className="text-amber-200 font-mono">GOOGLE_CLIENT_SECRET</code> in <code className="text-amber-200 font-mono">backend/.env</code> to connect directly with Google's live sign-in popup.
+                </p>
+              </div>
+            )}
+
+            {/* Domain Enforcement Test Box */}
+            <div className="space-y-3 pt-1">
+              <div className="text-left space-y-1">
+                <label htmlFor="test-google-email" className="text-xs font-bold text-slate-200">
+                  Test Domain Verification & Sign-in:
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  Test any email to verify domain restriction enforcement:
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  id="test-google-email"
+                  type="email"
+                  placeholder="e.g. employee@rexera.co.in"
+                  value={testGoogleEmail}
+                  onChange={(e) => setTestGoogleEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleTestGoogleLogin()}
+                  className="flex-1 rounded-xl border border-slate-700 bg-[#0a1019] px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={googleModalBusy}
+                  onClick={() => handleTestGoogleLogin()}
+                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
+                >
+                  {googleModalBusy ? 'Testing...' : 'Test Login'}
+                </button>
+              </div>
+
+              {/* Sample Quick Test Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400">Quick tests:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestGoogleEmail('admin@rexera.com');
+                      handleTestGoogleLogin('admin@rexera.com');
+                    }}
+                    className="rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-900/30 transition-colors"
+                  >
+                    ✓ admin@rexera.com (Allowed)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestGoogleEmail('dhairya@rexera.co.in');
+                      handleTestGoogleLogin('dhairya@rexera.co.in');
+                    }}
+                    className="rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-900/30 transition-colors"
+                  >
+                    ✓ dhairya@rexera.co.in (Allowed)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestGoogleEmail('user@gmail.com');
+                      handleTestGoogleLogin('user@gmail.com');
+                    }}
+                    className="rounded-lg border border-rose-500/40 bg-rose-950/20 px-2 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-900/30 transition-colors"
+                  >
+                    ✗ user@gmail.com (Blocked)
+                  </button>
+                </div>
+              </div>
+
+              {googleModalError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-800/60 bg-rose-950/40 p-2.5 text-xs text-rose-300 animate-pop-in">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+                  <span>{googleModalError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-2 border-t border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleModal(false);
+                  setGoogleModalError('');
+                }}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer Minimalist Bar */}
       <footer className="relative z-20 flex items-center justify-center px-6 sm:px-12 lg:px-16 py-4 text-xs text-slate-500 border-t border-slate-800/80 bg-[#0b121e]/80 backdrop-blur-xs">

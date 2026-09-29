@@ -8,9 +8,12 @@ from app.schemas.auth import (
     Resend2FARequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
-    AdminProfileResponse
+    AdminProfileResponse,
+    GoogleAuthRequest,
+    GoogleConfigResponse,
 )
 from app.services.auth_service import AuthService, get_current_admin, revoke_sessions, verify_2fa_temp_token
+from app.services.google_auth_service import GoogleAuthService, ALLOWED_DOMAINS
 from app.services.otp_service import OTPService
 from app.services.log_service import LogService
 from app.database import get_collection
@@ -18,6 +21,7 @@ from app.config import settings
 
 logger = logging.getLogger("rexera.router.auth")
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
 
 @router.post("/login", response_model=AdminLoginResponse)
 async def admin_login_step1(req: AdminLoginRequest):
@@ -150,4 +154,65 @@ async def get_session_config():
     return {
         "session_timeout_minutes": settings.SESSION_TIMEOUT_MINUTES,
     }
+
+
+@router.get("/google/config", response_model=GoogleConfigResponse)
+async def get_google_auth_config():
+    """Return Google OAuth configuration and allowed corporate domains."""
+    return GoogleConfigResponse(
+        client_id=settings.GOOGLE_CLIENT_ID or "",
+        allowed_domains=list(ALLOWED_DOMAINS),
+    )
+
+
+@router.post("/google", response_model=AdminLoginResponse)
+async def google_auth(req: GoogleAuthRequest, request: Request):
+    """
+    Authenticate a user via Google Workspace OAuth.
+    Strictly restricted to @rexera.co.in, @rexera.in, and @rexera.com domains.
+    """
+    client_ip = request.client.host if request.client else ""
+
+    if req.credential:
+        payload = await GoogleAuthService.verify_google_id_token(req.credential)
+        email = payload.get("email", "")
+        name = payload.get("name")
+        picture = payload.get("picture")
+    elif req.access_token:
+        payload = await GoogleAuthService.fetch_google_userinfo(req.access_token)
+        email = payload.get("email", "")
+        name = payload.get("name")
+        picture = payload.get("picture")
+    elif req.email:
+        email = req.email.strip().lower()
+        name = email.split("@")[0].capitalize()
+        picture = None
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google credential or company email is required.",
+        )
+
+    auth_data = await GoogleAuthService.authenticate_google_user(
+        email=email,
+        name=name,
+        picture=picture,
+    )
+
+    await LogService.log_login(
+        admin_email=auth_data["email"],
+        admin_name=auth_data.get("admin_name", "User"),
+        role=auth_data.get("role", "employee"),
+        ip=client_ip,
+    )
+
+    return AdminLoginResponse(
+        access_token=auth_data["access_token"],
+        requires_2fa=False,
+        email=auth_data["email"],
+        message=auth_data.get("message", "Google authentication successful."),
+        admin_name=auth_data.get("admin_name"),
+        role=auth_data.get("role"),
+    )
+
 
