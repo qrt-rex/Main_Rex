@@ -1,5 +1,4 @@
 import io
-import os
 import re
 import difflib
 import logging
@@ -9,9 +8,6 @@ import pandas as pd
 from app.schemas.bulk_import import ImportTargetEntity, ColumnMappingSuggestion, TARGET_SCHEMA_REGISTRY
 
 logger = logging.getLogger("rexera.bulk_import.parser")
-
-UPLOAD_TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "temp_imports")
-os.makedirs(UPLOAD_TEMP_DIR, exist_ok=True)
 
 
 class ImportParserService:

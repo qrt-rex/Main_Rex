@@ -69,6 +69,30 @@ cd frontend && npm run lint    # oxlint
 cd backend && python -m pyflakes app
 ```
 
+### Deploy on Vercel
+
+`vercel.json` deploys the repository as one Vercel project with two services:
+
+- `backend`: FastAPI, receives `/api/*` and the payslip images `/assets/logo.png` and `/assets/stamp.png`
+- `frontend`: the built React app, receives everything else, with unknown paths answered by `index.html`
+
+Set the backend settings (see Configuration) as Vercel environment variables, because `backend/.env`
+is not uploaded. For Vercel also set:
+
+- `APP_ENV=production` and `EMAIL_DEV_MODE=False`
+- `AUTOMATIONS_ENABLED=False`
+- `COMPANY_WEBSITE` to the Vercel domain
+- `POSTGRES_URI` to a pooled connection if the database offers one
+
+Add the domain to the Google OAuth client's allowed JavaScript origins.
+
+Limits on Vercel:
+
+- Scheduled automations don't run.
+- Generated report files are kept only briefly.
+- Uploads are capped at 4.5 MB.
+- Long broadcast email runs stop at the function time limit.
+
 ---
 
 ## Configuration (`backend/.env`)

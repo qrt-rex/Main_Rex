@@ -10,11 +10,12 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from app.config import DATA_DIR
 from app.schemas.analytics_reports import (
     ExportFormat, IndividualPerformanceReport, CompanyWidePerformanceReport, ReportScope,
 )
 
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "generated_reports")
+OUTPUT_DIR = os.path.join(DATA_DIR, "generated_reports")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 EXTENSIONS = {ExportFormat.PDF: "pdf", ExportFormat.EXCEL: "xlsx", ExportFormat.CSV: "csv"}

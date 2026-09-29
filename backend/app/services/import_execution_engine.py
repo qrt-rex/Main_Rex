@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple, Optional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
+from app.config import DATA_DIR
 from app.database import get_collection
 from app.schemas.leave import LeaveBalance
 from app.services.employee_service import EmployeeService
@@ -14,7 +15,7 @@ from app.schemas.bulk_import import ImportTargetEntity, ImportJobStatus, TARGET_
 
 logger = logging.getLogger("rexera.bulk_import.engine")
 
-ERROR_REPORT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "error_reports")
+ERROR_REPORT_DIR = os.path.join(DATA_DIR, "error_reports")
 
 
 class ImportExecutionEngine:
