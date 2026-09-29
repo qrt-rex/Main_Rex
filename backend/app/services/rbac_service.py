@@ -160,6 +160,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/auth/session-config"): PUBLIC,
     ("GET", "/api/auth/google/config"): PUBLIC,
     ("POST", "/api/auth/google"): PUBLIC,
+    ("GET", "/api/auth/verify-reset-token"): PUBLIC,
     ("GET", "/api/auth/me"): AUTHENTICATED,
     ("POST", "/api/auth/logout"): AUTHENTICATED,
     ("POST", "/api/auth/session-timeout"): AUTHENTICATED,

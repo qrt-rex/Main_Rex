@@ -70,6 +70,7 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<RedirectIfAuthenticated><LoginPage /></RedirectIfAuthenticated>} />
+                <Route path="/reset-password" element={<RedirectIfAuthenticated><LoginPage /></RedirectIfAuthenticated>} />
 
                 <Route element={<RequireAuth />}>
                   {/* Role dashboards: the control centre for each role, no module sidebar. */}

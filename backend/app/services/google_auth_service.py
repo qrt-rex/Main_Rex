@@ -16,9 +16,11 @@ logger = logging.getLogger("rexera.auth.google")
 ALLOWED_DOMAINS = ("@rexera.co.in", "@rexera.in", "@rexera.com")
 
 
-def is_rexera_domain(email: str) -> bool:
+def is_rexera_domain(email: str, allow_test_domain: bool = False) -> bool:
     """Return True if email domain is @rexera.co.in, @rexera.in, or @rexera.com."""
     clean = (email or "").strip().lower()
+    if allow_test_domain and clean.endswith("@rexera-test.com"):
+        return True
     return any(clean.endswith(d) for d in ALLOWED_DOMAINS)
 
 

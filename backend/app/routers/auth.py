@@ -1,5 +1,8 @@
 import logging
-from typing import Dict, Any
+import secrets
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from urllib.parse import quote, urlparse
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from app.schemas.auth import (
     AdminLoginRequest,
@@ -13,8 +16,9 @@ from app.schemas.auth import (
     GoogleConfigResponse,
 )
 from app.services.auth_service import AuthService, get_current_admin, revoke_sessions, verify_2fa_temp_token
-from app.services.google_auth_service import GoogleAuthService, ALLOWED_DOMAINS
+from app.services.google_auth_service import GoogleAuthService, ALLOWED_DOMAINS, is_rexera_domain
 from app.services.otp_service import OTPService
+from app.services.email_service import EmailService
 from app.services.log_service import LogService
 from app.database import get_collection
 from app.config import settings
@@ -84,25 +88,96 @@ async def resend_2fa_otp(req: Resend2FARequest):
     return {"success": True, "message": msg, "debug_otp": debug_otp}
 
 @router.post("/forgot-password")
-async def forgot_password(req: ForgotPasswordRequest):
-    """Send a password reset OTP code to the registered admin email.
-
-    Always answers the same way (no account enumeration), and never returns the code:
-    anyone may call this, so the code must only ever reach the mailbox.
+async def forgot_password(req: ForgotPasswordRequest, request: Request):
+    """Send a password reset email link to the registered admin email.
+    
+    Enforces strict domain restrictions (@rexera.in, @rexera.com, @rexera.co.in).
     """
-    admin = await get_collection("admins").find_one({"email": req.email.strip().lower()})
+    clean_email = req.email.strip().lower()
+
+    # Enforce allowed domains
+    is_test_env = getattr(settings, "APP_ENV", "").lower() == "test"
+    if not is_rexera_domain(clean_email, allow_test_domain=is_test_env):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only emails from @rexera.in, @rexera.com, or @rexera.co.in are allowed."
+        )
+
+    # Determine frontend URL origin
+    origin = request.headers.get("origin")
+    if not origin:
+        referer = request.headers.get("referer")
+        if referer:
+            try:
+                p = urlparse(referer)
+                origin = f"{p.scheme}://{p.netloc}"
+            except Exception:
+                origin = None
+    if not origin:
+        origin = "http://localhost:5173"
+
+    admin = await get_collection("admins").find_one({"email": clean_email})
     if admin and admin.get("is_active", True):
+        # Generate secure random token
+        reset_token = secrets.token_urlsafe(32)
+        now = datetime.utcnow()
+        expires_at = now + timedelta(minutes=15)
+        col = get_collection("otps")
+
+        # Invalidate old reset records
+        while (await col.delete_one({"email": clean_email, "purpose": "password_reset"})).deleted_count:
+            pass
+
+        # Save new token
+        await col.insert_one({
+            "email": clean_email,
+            "otp": reset_token,
+            "purpose": "password_reset",
+            "expires_at": expires_at.isoformat(),
+            "used": False,
+            "failed_attempts": 0,
+            "created_at": now.isoformat()
+        })
+
+        # Build reset link and send email
+        reset_url = f"{origin}/reset-password?token={reset_token}&email={quote(clean_email)}"
+        await EmailService.send_password_reset_email(clean_email, reset_url)
+
+    return {
+        "success": True,
+        "message": "If an account exists for this email, a password reset link has been sent to it.",
+        "debug_otp": None
+    }
+
+@router.get("/verify-reset-token")
+async def verify_reset_token(token: str, email: str):
+    """Verify if a reset token is valid, active, and unexpired."""
+    clean_email = email.strip().lower()
+    col = get_collection("otps")
+    record = await col.find_one({"email": clean_email, "otp": token, "purpose": "password_reset", "used": False})
+    if not record:
+        return {"valid": False, "message": "This password reset link is invalid or has already been used."}
+
+    expires_at_str = record.get("expires_at")
+    if expires_at_str:
         try:
-            await OTPService.create_and_send_otp(req.email, purpose="password_reset")
-        except HTTPException:
-            pass  # rate-limited: answer identically so the response never reveals the account exists
-    return {"success": True, "message": "If an account exists for this email, a reset code has been sent to it.",
-            "debug_otp": None}
+            if datetime.utcnow() > datetime.fromisoformat(expires_at_str):
+                return {"valid": False, "message": "This password reset link has expired. Please request a new one."}
+        except (TypeError, ValueError):
+            pass
+
+    return {"valid": True, "message": "Reset token is valid."}
 
 @router.post("/reset-password")
 async def reset_password(req: ResetPasswordRequest):
-    """Reset admin password after verifying the email OTP."""
-    ok, msg = await AuthService.reset_password_with_otp(req.email, req.otp, req.new_password)
+    """Reset admin password after verifying the email reset token or OTP."""
+    token_or_otp = req.token or req.otp
+    if not token_or_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A reset token or verification code is required."
+        )
+    ok, msg = await AuthService.reset_password_with_otp(req.email, token_or_otp, req.new_password)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     return {"success": True, "message": msg}

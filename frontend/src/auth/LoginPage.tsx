@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Eye, 
   EyeOff, 
-  Info, 
   Mail, 
   Lock, 
   User, 
@@ -11,7 +11,8 @@ import {
   Clock, 
   Calendar,
   AlertCircle,
-  X
+  X,
+  CheckCircle2
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { api, ApiError } from '../lib/api';
@@ -46,11 +47,15 @@ function GoogleIcon({ className = 'h-5 w-5' }: { className?: string }) {
   );
 }
 
-function DevCode({ code }: { code: string | null }) {
+function DevCode(_props: { code?: string | null }) {
   return null;
 }
 
 export function LoginPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
   const { startLogin, verifyOtp, resendOtp, loginWithGoogle, signOutReason } = useAuth();
   const { showToast } = useToast();
 
@@ -60,10 +65,44 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [tokenChecking, setTokenChecking] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [tempToken, setTempToken] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Check URL params for reset link (?token=...&email=...) or /reset-password
+  useEffect(() => {
+    const tokenParam = searchParams.get('token');
+    const emailParam = searchParams.get('email');
+    if (tokenParam || location.pathname === '/reset-password') {
+      setStep('reset');
+      if (tokenParam) setResetToken(tokenParam);
+      if (emailParam) setEmail(emailParam);
+
+      if (tokenParam && emailParam) {
+        setTokenChecking(true);
+        api.get<{ valid: boolean; message: string }>(`/api/auth/verify-reset-token?token=${encodeURIComponent(tokenParam)}&email=${encodeURIComponent(emailParam)}`)
+          .then((res) => {
+            if (res && !res.valid) {
+              setTokenError(res.message || 'This reset link has expired or is invalid.');
+            } else {
+              setTokenError(null);
+            }
+          })
+          .catch(() => {
+            // Allow submission to validate
+          })
+          .finally(() => setTokenChecking(false));
+      }
+    }
+  }, [searchParams, location.pathname]);
 
   // Google OAuth state
   const tokenClientRef = useRef<any>(null);
@@ -213,6 +252,8 @@ export function LoginPage() {
   const go = (next: Step) => {
     setError('');
     setOtp('');
+    setForgotSent(false);
+    setTokenError(null);
     if (next !== step) setDevCode(null);
     setStep(next);
   };
@@ -265,11 +306,22 @@ export function LoginPage() {
 
   const submitForgot = (e: FormEvent) => {
     e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your email address.');
+      return;
+    }
+    const isAllowed = ALLOWED_DOMAINS.some((d) => cleanEmail.endsWith(d));
+    if (!isAllowed) {
+      setError('Only email addresses ending in @rexera.in, @rexera.com, or @rexera.co.in are allowed.');
+      return;
+    }
     run(async () => {
-      await api.post('/api/auth/forgot-password', { email: email.trim() });
-      go('reset');
-      showToast('If this email belongs to an account, a reset code is on its way.', 'info');
-    }, 'Could not send a reset code.');
+      await api.post('/api/auth/forgot-password', { email: cleanEmail });
+      setForgotSent(true);
+      setError('');
+      showToast('A password reset link has been sent to your email.', 'info');
+    }, 'Could not send the password reset link.');
   };
 
   const submitReset = (e: FormEvent) => {
@@ -278,12 +330,30 @@ export function LoginPage() {
       setError('Use at least 8 characters for the new password.');
       return;
     }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match. Please verify both fields.');
+      return;
+    }
+    const activeToken = resetToken.trim() || otp.trim();
+    if (!activeToken) {
+      setError('Reset token is missing. Please click the link sent to your email.');
+      return;
+    }
     run(async () => {
-      await api.post('/api/auth/reset-password', { email: email.trim(), otp, new_password: newPassword });
+      await api.post('/api/auth/reset-password', {
+        email: email.trim(),
+        token: activeToken,
+        otp: activeToken,
+        new_password: newPassword
+      });
       setNewPassword('');
+      setConfirmPassword('');
       setPassword('');
+      setResetToken('');
+      setOtp('');
+      showToast('Password updated successfully! Please sign in with your new password.', 'success');
       go('credentials');
-      showToast('Password updated. Sign in with your new password.', 'success');
+      navigate('/login', { replace: true });
     }, 'Could not reset the password.');
   };
 
@@ -547,88 +617,203 @@ export function LoginPage() {
 
                 {/* STEP 3: FORGOT PASSWORD */}
                 {step === 'forgot' && (
-                  <form onSubmit={submitForgot} noValidate className="space-y-5 animate-slide-in-right">
-                    <div className="text-left space-y-1">
-                      <h3 className="text-base font-bold text-white">Reset Your Password</h3>
-                      <p className="text-xs text-slate-400">
-                        Enter your email address to receive a secure password reset token.
-                      </p>
-                    </div>
-
-                    <div className="relative group">
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400">
-                        <Mail size={16} />
+                  forgotSent ? (
+                    <div className="space-y-5 animate-slide-in-right text-center py-2">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                        <CheckCircle2 size={32} />
                       </div>
-                      <input
-                        type="email"
-                        required
-                        autoFocus
-                        placeholder="your.email@rexera.co.in"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-4 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      />
-                    </div>
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-white">Reset Link Sent!</h3>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          We have sent a secure password reset link to <br />
+                          <span className="font-semibold text-indigo-400">{email}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Please check your inbox (and spam folder). The link will expire in 15 minutes.
+                        </p>
+                      </div>
 
-                    {error && <p role="alert" className="text-xs font-semibold text-rose-400 pl-2">{error}</p>}
-
-                    <div className="flex items-center justify-between pt-1">
-                      <button
-                        type="button"
-                        onClick={() => go('credentials')}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white"
-                      >
-                        <ArrowLeft size={14} /> Back to login
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={busy}
-                        className="rounded-full bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow hover:bg-indigo-700 transition-all disabled:opacity-60"
-                      >
-                        {busy ? 'Sending...' : 'Send Reset Code'}
-                      </button>
+                      <div className="pt-2 space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => go('credentials')}
+                          className="w-full rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 py-3 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 hover:from-indigo-700 hover:to-indigo-800 transition-all"
+                        >
+                          Back to Sign In
+                        </button>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => { setForgotSent(false); setError(''); }}
+                            className="text-xs font-medium text-slate-400 hover:text-white transition-colors"
+                          >
+                            Didn't receive the email? Try again
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </form>
+                  ) : (
+                    <form onSubmit={submitForgot} noValidate className="space-y-5 animate-slide-in-right">
+                      <div className="text-left space-y-1">
+                        <h3 className="text-base font-bold text-white">Reset Your Password</h3>
+                        <p className="text-xs text-slate-400">
+                          Enter your official Rexera email to receive a secure password reset link.
+                        </p>
+                      </div>
+
+                      <div className="relative group">
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400">
+                          <Mail size={16} />
+                        </div>
+                        <input
+                          type="email"
+                          required
+                          autoFocus
+                          placeholder="your.email@rexera.co.in"
+                          value={email}
+                          onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                          className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3.5 pl-13 pr-4 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 px-1 text-[11px] text-slate-500">
+                        <span>Allowed domains:</span>
+                        <span className="rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-slate-400">@rexera.in</span>
+                        <span className="rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-slate-400">@rexera.com</span>
+                        <span className="rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-slate-400">@rexera.co.in</span>
+                      </div>
+
+                      {error && <p role="alert" className="text-xs font-semibold text-rose-400 pl-2">{error}</p>}
+
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => go('credentials')}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white"
+                        >
+                          <ArrowLeft size={14} /> Back to login
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="rounded-full bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow hover:bg-indigo-700 transition-all disabled:opacity-60"
+                        >
+                          {busy ? 'Sending...' : 'Send Reset Link'}
+                        </button>
+                      </div>
+                    </form>
+                  )
                 )}
 
                 {/* STEP 4: RESET PASSWORD */}
                 {step === 'reset' && (
-                  <form onSubmit={submitReset} noValidate className="space-y-4 animate-slide-in-right">
-                    <div className="text-left space-y-1">
-                      <h3 className="text-base font-bold text-white">Set New Password</h3>
-                      <p className="text-xs text-slate-400">Enter the 6-digit OTP code and choose a new password.</p>
+                  tokenError ? (
+                    <div className="space-y-5 animate-slide-in-right text-center py-2">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                        <AlertCircle size={32} />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-white">Invalid or Expired Link</h3>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {tokenError}
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => go('forgot')}
+                          className="w-full rounded-full bg-indigo-600 py-3 text-xs font-bold text-white hover:bg-indigo-700 transition-all"
+                        >
+                          Request a New Reset Link
+                        </button>
+                      </div>
                     </div>
+                  ) : (
+                    <form onSubmit={submitReset} noValidate className="space-y-4 animate-slide-in-right">
+                      <div className="text-left space-y-1">
+                        <h3 className="text-base font-bold text-white">Create New Password</h3>
+                        <p className="text-xs text-slate-400">
+                          {tokenChecking ? 'Verifying link...' : <>Enter a new secure password for <span className="text-indigo-400 font-semibold">{email || 'your account'}</span>.</>}
+                        </p>
+                      </div>
 
-                    <input
-                      type="text"
-                      required
-                      placeholder="6-digit reset code"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3 px-4 text-center font-mono font-bold tracking-widest text-sm text-white"
-                    />
+                      {!resetToken && (
+                        <div className="relative group">
+                          <input
+                            type="text"
+                            required
+                            placeholder="6-digit reset code or token"
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value.trim())}
+                            className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3 px-4 text-center font-mono font-bold tracking-widest text-sm text-white"
+                          />
+                        </div>
+                      )}
 
-                    <input
-                      type="password"
-                      required
-                      placeholder="New password (min 8 characters)"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3 px-4 text-sm text-white"
-                    />
+                      <div className="relative group">
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400">
+                          <Lock size={16} />
+                        </div>
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          required
+                          placeholder="New password (min 8 characters)"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3 pl-13 pr-11 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                          tabIndex={-1}
+                        >
+                          {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
 
-                    <DevCode code={devCode} />
-                    {error && <p role="alert" className="text-xs font-semibold text-rose-400 pl-2">{error}</p>}
+                      <div className="relative group">
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-indigo-400">
+                          <Lock size={16} />
+                        </div>
+                        <input
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          required
+                          placeholder="Confirm new password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full rounded-full border border-slate-700 bg-[#0d1624] py-3 pl-13 pr-11 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                          tabIndex={-1}
+                        >
+                          {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <button type="button" onClick={() => go('credentials')} className="text-xs font-semibold text-slate-400 hover:text-white">
-                        Cancel
-                      </button>
-                      <button type="submit" disabled={busy} className="rounded-full bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-indigo-700">
-                        {busy ? 'Updating...' : 'Save New Password'}
-                      </button>
-                    </div>
-                  </form>
+                      {error && <p role="alert" className="text-xs font-semibold text-rose-400 pl-2">{error}</p>}
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => go('credentials')}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-white"
+                        >
+                          <ArrowLeft size={14} /> Back to Sign In
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 hover:from-indigo-700 hover:to-indigo-800 transition-all disabled:opacity-60"
+                        >
+                          {busy ? 'Saving...' : 'Save New Password'}
+                        </button>
+                      </div>
+                    </form>
+                  )
                 )}
 
 
