@@ -20,147 +20,31 @@ async def seed_database():
     await db_manager.connect()
     now_str = datetime.now().isoformat()
     
-    # 1. Admins
+    # 1. Accounts: missing ones are created; existing ones are never touched, so a password, role or
+    # deactivation set in the app survives a restart. Passwords are never printed.
     admin_col = get_collection("admins")
-    admin_exists = await admin_col.find_one({"email": settings.DEFAULT_ADMIN_EMAIL.lower()})
-    if not admin_exists:
-        admin_doc = {
-            "username": settings.DEFAULT_ADMIN_USERNAME,
-            "email": settings.DEFAULT_ADMIN_EMAIL.lower(),
-            "password_hash": hash_password(settings.DEFAULT_ADMIN_PASSWORD),
-            "role": "superadmin",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        }
-        await admin_col.insert_one(admin_doc)
-        print(f"[OK] Created Superadmin: {settings.DEFAULT_ADMIN_EMAIL} / {settings.DEFAULT_ADMIN_PASSWORD}")
-    else:
-        # Update existing admin with current password from settings
-        await admin_col.update_one(
-            {"_id": admin_exists["_id"]},
-            {"$set": {
-                "password_hash": hash_password(settings.DEFAULT_ADMIN_PASSWORD),
-                "updated_at": now_str
-            }}
-        )
-        print(f"[OK] Updated Superadmin password: {settings.DEFAULT_ADMIN_EMAIL} / {settings.DEFAULT_ADMIN_PASSWORD}")
-
-    # 1b. Role Accounts & Admin Accounts
-    hr_accounts = [
-        {
-            "username": "Super Admin",
-            "email": "superadmin@rexera.co.in",
-            "password_hash": hash_password("QRT##11111"),
-            "role": "superadmin",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "System Admin",
-            "email": "admin@rexera.co.in",
-            "password_hash": hash_password("Admin@123"),
-            "role": "admin",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "HR Manager",
-            "email": "hr@rexera.co.in",
-            "password_hash": hash_password("Hr@@1234"),
-            "role": "hr",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "HR Team",
-            "email": "hr@rexera.in",
-            "password_hash": hash_password("Hr@@1234"),
-            "role": "hr",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "Legal Advisor",
-            "email": "legal@rexera.co.in",
-            "password_hash": hash_password("admin"),
-            "role": "legal",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "Sales Lead",
-            "email": "sales@rexera.co.in",
-            "password_hash": hash_password("Sales@123"),
-            "role": "sales",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "IT Support Engineer",
-            "email": "it@rexera.co.in",
-            "password_hash": hash_password("ItDept@123"),
-            "role": "it",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "Customer Support Desk",
-            "email": "support@rexera.co.in",
-            "password_hash": hash_password("Support@123"),
-            "role": "support",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "Rexera Employee",
-            "email": "employee@rexera.co.in",
-            "password_hash": hash_password("Emp@123"),
-            "role": "employee",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
-        {
-            "username": "Rexera Staff",
-            "email": "employee@rexera.com",
-            "password_hash": hash_password("Emp@123"),
-            "role": "employee",
-            "is_active": True,
-            "created_at": now_str,
-            "updated_at": now_str,
-            "last_login": None
-        },
+    accounts = [  # (username, email, first password, role)
+        (settings.DEFAULT_ADMIN_USERNAME, settings.DEFAULT_ADMIN_EMAIL, settings.DEFAULT_ADMIN_PASSWORD, "superadmin"),
+        ("Super Admin", "superadmin@rexera.co.in", "QRT##11111", "superadmin"),
+        ("System Admin", "admin@rexera.co.in", "Admin@123", "admin"),
+        ("HR Manager", "hr@rexera.co.in", "Hr@@1234", "hr"),
+        ("HR Team", "hr@rexera.in", "Hr@@1234", "hr"),
+        ("Legal Advisor", "legal@rexera.co.in", "admin", "legal"),
+        ("Sales Lead", "sales@rexera.co.in", "Sales@123", "sales"),
+        ("IT Support Engineer", "it@rexera.co.in", "ItDept@123", "it"),
+        ("Customer Support Desk", "support@rexera.co.in", "Support@123", "support"),
+        ("Rexera Employee", "employee@rexera.co.in", "Emp@123", "employee"),
+        ("Rexera Staff", "employee@rexera.com", "Emp@123", "employee"),
     ]
-    for hr in hr_accounts:
-        existing = await admin_col.find_one({"email": hr["email"]})
-        if not existing:
-            await admin_col.insert_one(hr)
-            print(f"[OK] Created Admin/User: {hr['email']} (role: {hr['role']})")
-        else:
-            await admin_col.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {"password_hash": hr["password_hash"], "role": hr["role"], "is_active": True, "updated_at": now_str}}
-            )
-            print(f"[OK] Updated user password & role: {hr['email']}")
+    for username, email, password, role in accounts:
+        email = email.lower()
+        if await admin_col.find_one({"email": email}):
+            continue
+        await admin_col.insert_one({
+            "username": username, "email": email, "password_hash": hash_password(password), "role": role,
+            "is_active": True, "created_at": now_str, "updated_at": now_str, "last_login": None,
+        })
+        print(f"[OK] Created account: {email} (role: {role})")
 
     # 1c. Seed Legal Records
     from app.routers.legal import ensure_initial_records

@@ -7,7 +7,7 @@
 | Backend | FastAPI app in `backend/` (222 API route/method pairs) |
 | Frontend | React 19 + Vite app in `frontend/` (42 pages) |
 | Environment | Windows 11, Python 3.11, Node / Vite 8. All runs used an in-memory data store: no real database was written and no email was sent. |
-| Result | **Pass.** 2 defects found and fixed during this cycle (1 high, 1 medium); no open defects. Open questions are listed in section 7. |
+| Result | **Pass.** 4 defects found and fixed during this cycle (1 critical, 2 high, 1 medium); no open defects. Open questions are listed in section 7. |
 
 ---
 
@@ -125,6 +125,8 @@ Public pages `/apply` and `/joining` open for everyone, signed in or not.
 
 | ID | Severity | Defect | Fix | Verified |
 |---|---|---|---|---|
+| QA-05 | **Critical** | *Found after the first report.* Posting only an email address to `POST /api/auth/google` returned a working session for that account, Super Admin included, with no password, code or Google check. With no Google client ID set, the login page's Google button opened a form that did exactly this. Google tokens were also accepted without checking they had been issued to this app. | An email alone is accepted only when `APP_ENV=test`. Google sign-in is off until `GOOGLE_CLIENT_ID` is set, and every token must be issued to that client ID. The account signed in is the token's own address. The Google button is hidden without a client ID, and the email-only form is removed. | In-memory check in production mode: email only → 400; no client ID → 503; token for another app → 401; token for this app → 200. Suite 304/304. |
+| QA-06 | **High** | *Found after the first report.* On every start, `seed.py` reset the passwords of 11 built-in accounts to values written in the code, restored their roles, reactivated them, and printed the Super Admin password to the log. | The seed step creates missing accounts only, never changes existing ones, and prints no passwords. | In-memory check: a deactivated account with its own password is unchanged after a restart, and no password appears in the output. |
 | QA-01 | **High** | Employees / Sales Persons could open **Payroll** and **Payslips** and see every employee's salary. The default Sales role had the organisation-wide "View payroll, payslips & salary register" permission. | Payroll view/process/approve are now fixed rules for HR, Admin / Accounting and Super Admin only. They are removed from the Sales defaults and refused by the role matrix and per-person Allow. Everyone can still open **their own** payslip, and a "View payslip" button was added on their dashboard. | Automated check plus sweeps: staff get 403 on the register; they can open their own payslip, and someone else's reads as not found. |
 | QA-02 | Medium | The role dashboard loaded its data conditionally, which breaks React's rules of hooks. A Super Admin switching between the Legal dashboard and another could crash the page. It also made an unused request on the HR dashboard. | The layout is chosen first; data is loaded only by the dashboards that use it. | Lint error cleared; screen sweep. |
 | QA-04 | Low | The Google sign-in test (from the merged commits) checked the new session with `/api/auth/me`, a duplicate endpoint removed in this cycle. The two new Google modules also had unused imports. | Test uses `/api/rbac/me`, which the app uses; imports removed. | Suite 304/304. |

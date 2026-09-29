@@ -5,6 +5,7 @@ import urllib.error
 import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
+from urllib.parse import quote
 from fastapi import HTTPException, status
 
 from app.config import settings
@@ -24,90 +25,64 @@ def is_rexera_domain(email: str, allow_test_domain: bool = False) -> bool:
     return any(clean.endswith(d) for d in ALLOWED_DOMAINS)
 
 
+def _client_id() -> str:
+    """Google sign-in is off until GOOGLE_CLIENT_ID is set: without it, a Google token issued to any
+    other website for a Rexera address would be accepted here."""
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Google sign-in is not configured.")
+    return settings.GOOGLE_CLIENT_ID
+
+
+async def _google_json(url: str, invalid_detail: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def _fetch():
+        req = urllib.request.Request(url, headers={"User-Agent": "RexCRM-Backend/1.0", **(headers or {})})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        return await asyncio.get_running_loop().run_in_executor(None, _fetch)
+    except urllib.error.HTTPError as e:
+        logger.warning(f"Google HTTP error {e.code}: {e.read().decode('utf-8', errors='ignore')}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=invalid_detail)
+    except Exception as e:
+        logger.error(f"Google verification request failed: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Unable to verify Google authentication with Google servers.")
+
+
+def _check_token(payload: Dict[str, Any], client_id: str) -> None:
+    """The token must be for this app's client ID and for an address Google has verified."""
+    if payload.get("aud") != client_id:
+        logger.warning(f"Google token aud mismatch: expected {client_id}, got {payload.get('aud')}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch.")
+    if payload.get("email_verified") not in (True, "true", "True", 1):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Your Google email address is not verified by Google.")
+
+
 class GoogleAuthService:
     @classmethod
     async def verify_google_id_token(cls, id_token: str) -> Dict[str, Any]:
-        """Verify the Google ID token via Google's tokeninfo endpoint."""
-        token_info_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}"
-
-        def _fetch():
-            req = urllib.request.Request(token_info_url, headers={"User-Agent": "RexCRM-Backend/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-
-        loop = asyncio.get_event_loop()
-        try:
-            payload = await loop.run_in_executor(None, _fetch)
-        except urllib.error.HTTPError as e:
-            logger.warning(f"Google tokeninfo HTTP error {e.code}: {e.read().decode('utf-8', errors='ignore')}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google credential token. Please sign in again.",
-            )
-        except Exception as e:
-            logger.error(f"Failed to verify Google token: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Unable to verify Google authentication with Google servers.",
-            )
-
-        # Check audience if client_id is configured
-        if settings.GOOGLE_CLIENT_ID:
-            aud = payload.get("aud")
-            if aud != settings.GOOGLE_CLIENT_ID:
-                logger.warning(f"Google token aud mismatch: expected {settings.GOOGLE_CLIENT_ID}, got {aud}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Google token audience mismatch.",
-                )
-
-        # Verify email is verified by Google
-        email_verified = payload.get("email_verified")
-        if email_verified not in (True, "true", "True", 1):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your Google email address is not verified by Google.",
-            )
-
+        """Verify a Google ID token via Google's tokeninfo endpoint."""
+        client_id = _client_id()
+        payload = await _google_json(f"https://oauth2.googleapis.com/tokeninfo?id_token={quote(id_token)}",
+                                     "Invalid Google credential token. Please sign in again.")
+        _check_token(payload, client_id)
         return payload
 
     @classmethod
     async def fetch_google_userinfo(cls, access_token: str) -> Dict[str, Any]:
-        """Fetch user profile from Google userinfo API using an OAuth2 access token."""
-        url = "https://www.googleapis.com/oauth2/v3/userinfo"
-
-        def _fetch():
-            req = urllib.request.Request(url, headers={
-                "Authorization": f"Bearer {access_token}",
-                "User-Agent": "RexCRM-Backend/1.0"
-            })
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-
-        loop = asyncio.get_event_loop()
-        try:
-            payload = await loop.run_in_executor(None, _fetch)
-        except urllib.error.HTTPError as e:
-            logger.warning(f"Google userinfo HTTP error {e.code}: {e.read().decode('utf-8', errors='ignore')}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google access token. Please sign in again.",
-            )
-        except Exception as e:
-            logger.error(f"Failed to fetch Google userinfo: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Unable to verify Google profile with Google servers.",
-            )
-
-        email_verified = payload.get("email_verified")
-        if email_verified not in (True, "true", "True", 1):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your Google email address is not verified by Google.",
-            )
-
-        return payload
+        """Verify an OAuth2 access token was issued to this app, then fetch the user's profile."""
+        client_id = _client_id()
+        invalid = "Invalid Google access token. Please sign in again."
+        token_info = await _google_json(
+            f"https://oauth2.googleapis.com/tokeninfo?access_token={quote(access_token)}", invalid)
+        _check_token(token_info, client_id)
+        profile = await _google_json("https://www.googleapis.com/oauth2/v3/userinfo", invalid,
+                                     {"Authorization": f"Bearer {access_token}"})
+        # Sign in as the address the verified token belongs to.
+        return {**profile, "email": token_info.get("email", "")}
 
     @classmethod
     async def authenticate_google_user(

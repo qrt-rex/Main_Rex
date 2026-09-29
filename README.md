@@ -103,7 +103,7 @@ Add that address to the Google OAuth client's allowed JavaScript origins.
 | `COMPANY_WEBSITE` | Address the app is served from; joining emails link to `{COMPANY_WEBSITE}/joining`. |
 | `CORS_ORIGINS` | Allowed browser origins, e.g. `["*"]` or `["http://localhost:5173"]`. |
 | `DEFAULT_ADMIN_*` | The Super Admin account created on first start. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Sign in with Google*. Only accounts on the domains in `ALLOWED_GOOGLE_DOMAINS` (rexera.co.in, rexera.in, rexera.com) are accepted. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Sign in with Google*. It is off, and its button hidden, while `GOOGLE_CLIENT_ID` is empty. Only Google tokens issued to that client ID and accounts on the domains in `ALLOWED_GOOGLE_DOMAINS` (rexera.co.in, rexera.in, rexera.com) are accepted. |
 
 ---
 

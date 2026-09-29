@@ -245,14 +245,15 @@ async def google_auth(req: GoogleAuthRequest, request: Request):
         email = payload.get("email", "")
         name = payload.get("name")
         picture = payload.get("picture")
-    elif req.email:
+    elif req.email and settings.APP_ENV.lower() == "test":
+        # A bare email proves nothing about who is asking, so it is accepted only by the automated tests.
         email = req.email.strip().lower()
         name = email.split("@")[0].capitalize()
         picture = None
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google credential or company email is required.",
+            detail="A Google sign-in token is required.",
         )
 
     auth_data = await GoogleAuthService.authenticate_google_user(
