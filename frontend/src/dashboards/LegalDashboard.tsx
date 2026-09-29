@@ -23,7 +23,7 @@ const LEGAL_SECTIONS: { id: LegalSection; label: string; description: string; ic
   { id: 'records', label: 'Legal records', description: 'Legal document review and compliance management', icon: Scale },
   { id: 'documents', label: 'Client documents', description: 'Document forms staff collected from clients', icon: FolderOpen },
   { id: 'assign', label: 'Assign clients', description: 'Give each client to the staff member who handles it', icon: UserCheck },
-  { id: 'approvals', label: 'Approvals', description: "Every assigned client's services, approved here and billed in Bill & Invoices", icon: CheckCircle2 },
+  { id: 'approvals', label: 'Approvals', description: "Salesperson leave requests and assigned client services awaiting approval", icon: CheckCircle2 },
 ];
 
 interface LegalRecord {

@@ -1,13 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, CheckCircle2, FileText, PauseCircle, Search, UserCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, Briefcase, CalendarCheck, CheckCircle2, ExternalLink, FileText, PauseCircle, Search, UserCheck, XCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
 import { date, money } from '../lib/format';
 import { StatusBadge } from '../components/common/Badge';
+import { Button } from '../components/common/Button';
 import { Card, CardHeader } from '../components/common/Card';
+import { Modal } from '../components/common/Modal';
 import { useToast } from '../components/common/ToastContext';
+import { pendingLeaves, decideLeave, type LeaveRequest } from '../hr/api';
 
 export interface LegalClient {
   kind: 'record' | 'document';
@@ -158,6 +161,205 @@ export function LegalAssignClients() {
   );
 }
 
+const idOf = (r: LeaveRequest) => r._id || r.id || '';
+
+export function LegalSalesLeaveApprovals() {
+  const { showToast } = useToast();
+  const pending = useApi(pendingLeaves);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectingRequest, setRejectingRequest] = useState<LeaveRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const requests = useMemo(() => pending.data?.data ?? [], [pending.data]);
+
+  const approve = async (req: LeaveRequest) => {
+    const id = idOf(req);
+    if (!id) return;
+    setBusyId(id);
+    try {
+      await decideLeave(id, 'APPROVE', 'Approved by Legal');
+      showToast(`Leave approved for ${req.employee_name}`, 'success');
+      pending.reload();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not approve leave', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const submitReject = async () => {
+    if (!rejectingRequest) return;
+    const id = idOf(rejectingRequest);
+    if (!id) return;
+    setBusyId(id);
+    try {
+      await decideLeave(id, 'REJECT', rejectReason.trim() || 'Rejected by Legal');
+      showToast(`Leave rejected for ${rejectingRequest.employee_name}`, 'success');
+      setRejectingRequest(null);
+      setRejectReason('');
+      pending.reload();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not reject leave', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      <div className={card}>
+        <SectionHeader icon={CalendarCheck} title="Salesperson leave approvals" count={requests.length}>
+          {requests.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              {requests.length} pending approval
+            </span>
+          )}
+        </SectionHeader>
+
+        {requests.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">
+            <CalendarCheck size={28} className="mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No salesperson leave requests pending</p>
+            <p className="mt-1 text-xs text-slate-400">When a salesperson applies for leave, it will appear here for review and decision.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/30 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <th className={`${th} pl-6`}>Salesperson</th>
+                  <th className={th}>Leave Type</th>
+                  <th className={th}>Dates & Duration</th>
+                  <th className={th}>Reason</th>
+                  <th className={th}>Balances & Risk</th>
+                  <th className={`${th} pr-6 text-right`}>Decision</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
+                {requests.map((r) => {
+                  const id = idOf(r);
+                  const isBusy = busyId === id;
+                  return (
+                    <tr key={id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30">
+                      <td className={`${th} pl-6`}>
+                        <span className="block font-semibold text-slate-800 dark:text-slate-100">{r.employee_name}</span>
+                        <span className="block text-[11px] text-slate-400">{r.employee_email || r.department}</span>
+                        {r.applicant_role && (
+                          <span className="inline-block mt-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.2 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                            {r.applicant_role}
+                          </span>
+                        )}
+                      </td>
+                      <td className={th}>
+                        <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+                          {r.leave_type}
+                        </span>
+                        {r.is_loss_of_pay && (
+                          <span className="block mt-0.5 text-[10px] font-semibold text-rose-500">
+                            LOP ({r.lop_days}d)
+                          </span>
+                        )}
+                      </td>
+                      <td className={th}>
+                        <span className="block font-medium text-slate-700 dark:text-slate-200">
+                          {date(r.start_date)} – {date(r.end_date)}
+                        </span>
+                        <span className="block text-[11px] text-slate-400">
+                          {r.total_days} day{r.total_days === 1 ? '' : 's'} · {r.duration_type?.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className={`${th} max-w-xs`}>
+                        <p className="truncate text-slate-700 dark:text-slate-300" title={r.reason}>
+                          {r.reason || '—'}
+                        </p>
+                        {r.medical_certificate_url && (
+                          <a
+                            href={r.medical_certificate_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-semibold mt-0.5"
+                          >
+                            <ExternalLink size={11} /> Med Certificate
+                          </a>
+                        )}
+                      </td>
+                      <td className={th}>
+                        {r.conflict_warning?.has_conflict && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 block mb-1">
+                            <AlertTriangle size={12} /> {r.conflict_warning.conflict_count} on leave
+                          </span>
+                        )}
+                        {r.balances && (
+                          <div className="text-[10px] text-slate-500 space-x-1">
+                            <span>CL: {r.balances.casual_leave_available ?? '—'}</span>
+                            <span>·</span>
+                            <span>SL: {r.balances.sick_leave_available ?? '—'}</span>
+                            <span>·</span>
+                            <span>EL: {r.balances.earned_leave_available ?? '—'}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className={`${th} pr-6 text-right`}>
+                        <span className="flex flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => approve(r)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 disabled:opacity-40 transition-colors"
+                          >
+                            <CheckCircle2 size={13} /> Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => { setRejectingRequest(r); setRejectReason(''); }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300 disabled:opacity-40 transition-colors"
+                          >
+                            <XCircle size={13} /> Reject
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {rejectingRequest && (
+        <Modal
+          open
+          onClose={() => setRejectingRequest(null)}
+          title="Reject salesperson leave request"
+          description={`${rejectingRequest.employee_name} · ${rejectingRequest.leave_type} · ${date(rejectingRequest.start_date)} – ${date(rejectingRequest.end_date)}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setRejectingRequest(null)}>Cancel</Button>
+              <Button variant="danger" loading={busyId === idOf(rejectingRequest)} onClick={submitReject}>Confirm Rejection</Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Reason for rejection (optional):
+            </label>
+            <textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Critical sales campaign week, please reschedule…"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            />
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------- Approvals
 export function LegalApprovals() {
   const { showToast } = useToast();
@@ -201,7 +403,11 @@ export function LegalApprovals() {
   const actionBtn = 'inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold disabled:opacity-40';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* 1. Salesperson Leave Approvals Queue */}
+      <LegalSalesLeaveApprovals />
+
+      {/* 2. Client Services Approvals */}
       {byMember.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {byMember.slice(0, 8).map(([id, m]) => (
@@ -214,7 +420,7 @@ export function LegalApprovals() {
         </div>
       )}
       <div className={card}>
-        <SectionHeader icon={CheckCircle2} title="Approvals" count={items.length}>
+        <SectionHeader icon={CheckCircle2} title="Client service approvals" count={items.length}>
           <Toolbar search={search} setSearch={setSearch}>
             <select aria-label="Filter by assigned member" value={member} onChange={(e) => setMember(e.target.value)} className={`${inputCls} w-48`}>
               <option value="assigned">All assigned members</option><option value="">All clients</option><option value="unassigned">Unassigned</option>

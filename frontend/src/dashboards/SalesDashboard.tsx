@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Briefcase, CalendarDays, Clock, FilePlus2, FolderKanban, ListChecks,
-  Megaphone, Plus, TriangleAlert, Users, Wallet,
+  Megaphone, PhoneCall, Plus, TriangleAlert, Users, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { date, money, number } from '../lib/format';
@@ -20,6 +20,7 @@ import {
 import { DashboardIntro } from './DashboardShell';
 import { SalesToday } from '../sales/SalesToday';
 import { QuickLeadModal } from '../sales/SalesWidgets';
+import { openDialer } from '../sales/openDialer';
 import { ClientDocumentFormModal, MyDocumentForms } from './ClientDocumentForm';
 import { PayslipPreview } from '../hr/components';
 import type { TaskItem, WorkspaceSummary } from './api';
@@ -32,6 +33,8 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
   const [slipOpen, setSlipOpen] = useState<string | null>(null);
   const [formsVersion, setFormsVersion] = useState(0);
+
+  const canSales = can('sales.hub.view');
 
   const openLeave = me.leaves.filter((l) => (l.status ?? '').toUpperCase() === 'PENDING').length;
   const canSubmitDocs = can('documents.submit');
@@ -50,6 +53,11 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
         subtitle="Your day, leads to call, schemes, marketing material, sales knowledge, client progress & employee records."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canSales && (
+              <Button onClick={() => openDialer()} title="Opens the dialer in a new tab">
+                <PhoneCall size={15} /> Dialer
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setQuickLeadOpen(true)}>
               <Plus size={15} /> New CRM lead
             </Button>
@@ -77,7 +85,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
       )}
 
       {/* 1. Complete Sales Workspace: Calling, Dialer, Schemes, Flyers, Sales Info, Attendance */}
-      {can('sales.hub.view') && <SalesToday />}
+      {canSales && <SalesToday />}
 
       {/* 2. Client & Delivery Operations Overview */}
       {clients && (

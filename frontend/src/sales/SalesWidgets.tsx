@@ -372,7 +372,15 @@ export function QuickSalesInfoModal({ material, onClose, onSaved }: { material?:
 }
 
 // ---------------------------------------------------------------- leads to call
-export function LeadsCard({ leads, onChanged }: { leads: Lead[]; onChanged: () => void }) {
+export function LeadsCard({
+  leads,
+  onChanged,
+  onOpenDialer,
+}: {
+  leads: Lead[];
+  onChanged: () => void;
+  onOpenDialer?: (lead?: Lead) => void;
+}) {
   const [dialer, setDialer] = useState<Lead[] | null>(null);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const open = leads.filter((l) => OPEN.has(l.status));
@@ -383,7 +391,17 @@ export function LeadsCard({ leads, onChanged }: { leads: Lead[]; onChanged: () =
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => setAddLeadOpen(true)}><Plus size={14} /> Add lead</Button>
-            {open.length > 0 && <Button size="sm" onClick={() => setDialer(open)}><PhoneForwarded size={14} /> Start dialer</Button>}
+            {open.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (onOpenDialer) onOpenDialer();
+                  else setDialer(open);
+                }}
+              >
+                <PhoneForwarded size={14} /> Start dialer
+              </Button>
+            )}
           </div>
         } />
       {open.length === 0 ? (
@@ -408,7 +426,16 @@ export function LeadsCard({ leads, onChanged }: { leads: Lead[]; onChanged: () =
                 <span className="flex items-center gap-2">
                   <StatusBadge status={l.status} />
                   {l.phone && <a href={telHref(l.phone)} aria-label={`Call ${l.name || l.company}`} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-success hover:bg-neutral-bg"><Phone size={14} /></a>}
-                  <Button size="sm" variant="secondary" onClick={() => setDialer([l])}>Log call</Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      if (onOpenDialer) onOpenDialer(l);
+                      else setDialer([l]);
+                    }}
+                  >
+                    Log call
+                  </Button>
                 </span>
               </li>
             );
@@ -420,6 +447,7 @@ export function LeadsCard({ leads, onChanged }: { leads: Lead[]; onChanged: () =
     </Card>
   );
 }
+
 
 // ---------------------------------------------------------------- 1. Schemes Box
 /** canManage comes from the server (Admin, Legal, Super Admin); everyone else only views. */

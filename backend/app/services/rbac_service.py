@@ -130,12 +130,13 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
               "sales.hub.manage"],
     "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit"],
-    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage"],
-    "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view"],
+    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "hr.leave.view", "hr.leave.approve"],
+    "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
            "users.manage", "audit.view"],
     "support": ["support.desk.view", "clients.view", "sales.customers.view", "sales.contacts.view",
                 "hr.broadcasts.view", "documents.submit"],
+    "employee": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
 }
 
 # ---------------------------------------------------------------------------
@@ -380,6 +381,13 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/sales-hub/materials"): "sales.hub.manage",
     ("PUT", "/api/sales-hub/materials/{material_id}"): "sales.hub.manage",
     ("DELETE", "/api/sales-hub/materials/{material_id}"): "sales.hub.manage",
+    # IVR dialer (proxied to the IVR provider; the user also signs in to the IVR itself)
+    ("GET", "/api/ivr/status"): "sales.hub.view",
+    ("POST", "/api/ivr/login"): "sales.hub.view",
+    ("POST", "/api/ivr/refresh"): "sales.hub.view",
+    ("GET", "/api/ivr/data/{resource}"): "sales.hub.view",
+    ("POST", "/api/ivr/call"): "sales.hub.view",
+    ("POST", "/api/ivr/campaigns/{campaign_id}/{action}"): "sales.hub.manage",
     # Automations
     ("GET", "/api/automations"): "automations.manage",
     ("PUT", "/api/automations/settings"): "automations.manage",

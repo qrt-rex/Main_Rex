@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic_settings import BaseSettings
 
 # Generated files (report exports, import error reports).
@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # Automations: the in-process scheduler (turn off on extra workers so jobs run once)
     AUTOMATIONS_ENABLED: bool = True
     AUTOMATION_TIMEZONE: str = "Asia/Kolkata"
+
+    # IVR / dialer provider. The CRM proxies every IVR call through /api/ivr/* (no browser CORS,
+    # one place to configure). Paths are relative to IVR_API_BASE_URL; IVR_PATHS (JSON) overrides
+    # any of the resource paths in app/routers/ivr.py, e.g. {"campaigns": "/api/v2/campaigns"}.
+    IVR_API_BASE_URL: str = ""
+    IVR_LOGIN_PATH: str = "/api/auth/login"
+    IVR_REFRESH_PATH: str = "/api/auth/refresh"
+    IVR_CLIENT_APP: str = "dialer"
+    IVR_TIMEOUT_SECONDS: float = 20.0
+    IVR_PATHS: Dict[str, str] = {}
 
     # Company Details
     COMPANY_NAME: str = "Rexera Technologies Inc."

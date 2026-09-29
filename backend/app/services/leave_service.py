@@ -18,20 +18,39 @@ from app.schemas.leave import (
 
 logger = logging.getLogger("rexera.leave")
 
-# Who approves whose leave: staff and sales -> HR; HR -> Admin; Admin -> Super Admin.
+# Who approves whose leave: sales -> Legal/HR/Admin/SuperAdmin; staff -> HR; HR -> Admin; Admin -> Super Admin.
 # A higher role may always decide a lower level's request.
-LEVEL_BY_APPLICANT_ROLE = {"hr": "ADMIN", "admin": "SUPERADMIN", "superadmin": "SUPERADMIN"}
-DECIDERS = {"HR": {"hr", "admin", "superadmin"}, "ADMIN": {"admin", "superadmin"}, "SUPERADMIN": {"superadmin"}}
-LEVEL_LABEL = {"HR": "HR", "ADMIN": "Admin", "SUPERADMIN": "Super Admin"}
-
-
+LEVEL_BY_APPLICANT_ROLE = {
+    "sales": "SALES",
+    "hr": "ADMIN",
+    "admin": "SUPERADMIN",
+    "superadmin": "SUPERADMIN",
+}
+DECIDERS = {
+    "SALES": {"legal", "hr", "admin", "superadmin"},
+    "HR": {"hr", "admin", "superadmin"},
+    "ADMIN": {"admin", "superadmin"},
+    "SUPERADMIN": {"superadmin"},
+}
+LEVEL_LABEL = {
+    "SALES": "Legal / HR / Super Admin",
+    "HR": "HR",
+    "ADMIN": "Admin",
+    "SUPERADMIN": "Super Admin",
+}
 LEVEL_RANK = {"HR": 0, "ADMIN": 1, "SUPERADMIN": 2}
 
 
 def can_decide(leave_doc: Dict[str, Any], roles) -> bool:
     """roles: one role name or all of a user's roles; any one of them being enough."""
     roles = [roles] if isinstance(roles, str) or roles is None else roles
-    allowed = DECIDERS.get(leave_doc.get("approval_level") or "HR", DECIDERS["HR"])
+    level = leave_doc.get("approval_level")
+    if not level:
+        if leave_doc.get("applicant_role") == "sales" or str(leave_doc.get("department") or "").upper() == "SALES":
+            level = "SALES"
+        else:
+            level = "HR"
+    allowed = DECIDERS.get(level, DECIDERS["HR"])
     return any(normalize_role(r) in allowed for r in roles)
 
 
@@ -177,9 +196,11 @@ class LeaveService:
 
         department = emp.get("department", "General")
         account = await cls.applicant_login(emp.get("email"))
-        applicant_role = normalize_role((account or {}).get("role"))
+        roles = user_roles(account)
+        if not roles and (str(department).upper() == "SALES" or "SALES" in str(emp.get("designation") or "").upper()):
+            roles = ["sales"]
         # Someone holding several roles is routed to the most senior approver among them.
-        approval_level = max((LEVEL_BY_APPLICANT_ROLE.get(r, "HR") for r in user_roles(account)), key=LEVEL_RANK.get, default="HR")
+        approval_level = max((LEVEL_BY_APPLICANT_ROLE.get(r, "HR") for r in roles), key=LEVEL_RANK.get, default="HR")
 
         leave_record = LeaveRequest(
             employee_id=emp_id,

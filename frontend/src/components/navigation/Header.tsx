@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, CircleHelp, FileSpreadsheet, Keyboard, LogOut, Menu, Palette, ShieldCheck, UserRound } from 'lucide-react';
+import { Bell, ChevronDown, CircleHelp, FileSpreadsheet, Keyboard, LogOut, Menu, Palette, Radio, ShieldCheck, UserRound } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useNotifications } from '../../lib/notifications';
 import { relativeTime } from '../../lib/format';
@@ -126,7 +126,7 @@ function UserMenu() {
 
 /** `onOpenMenu` is only passed by AppLayout; the dashboard shell has no sidebar to open. */
 export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-surface/80 sm:px-4">
       {onOpenMenu && (
@@ -147,6 +147,18 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
       </Link>
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-1.5">
+        {(user?.role === 'superadmin' || user?.role === 'admin') && (
+          <a
+            href="/ivr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#FACC15] px-2.5 text-xs font-bold text-neutral-950 shadow-2xs hover:bg-amber-400 transition-colors"
+            title="Open IVR Voice Blasts (New Window)"
+          >
+            <Radio size={13} className="stroke-[2.4]" />
+            <span className="hidden sm:inline">IVR</span>
+          </a>
+        )}
         {can('billing.view') && (
           <Link
             to="/billing/invoices"
