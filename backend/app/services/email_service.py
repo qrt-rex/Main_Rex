@@ -107,14 +107,14 @@ Best Regards,
 
         if dev_mode:
             logger.info(f"[EMAIL SIMULATION] Sent to: {to_email} | Subject: {subject.encode('ascii', 'replace').decode('ascii')}")
-            print(f"\n=======================================================")
-            print(f"[EMAIL SIMULATION - SUCCESS]")
+            print("\n=======================================================")
+            print("[EMAIL SIMULATION - SUCCESS]")
             print(f"To: {to_email}")
             print(f"From: {from_name} <{from_email}>")
             print(f"Subject: {subject.encode('ascii', 'replace').decode('ascii')}")
             if attachment_filename:
                 print(f"Attachment: {attachment_filename} ({len(attachment_bytes or b'')} bytes)")
-            print(f"=======================================================\n")
+            print("=======================================================\n")
             return True, None
 
         if use_api:
@@ -325,7 +325,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; color: 
     async def send_joining_token_email(cls, to_email: str, candidate_name: str, token: str, position: str = "") -> bool:
         subject = f"Welcome to Rexera - Your Onboarding Joining Token: {token}"
         candidate_name, position, token = html.escape(candidate_name or ""), html.escape(position or ""), html.escape(token)
-        portal_url = f"{settings.COMPANY_WEBSITE}/joining-login.html"
+        portal_url = f"{settings.COMPANY_WEBSITE}/joining"
         body = f"""
         <div style="padding: 20px; font-family: sans-serif;">
             <h2 style="color: #09234b; margin-top: 0;">Welcome to Rexera Technologies!</h2>

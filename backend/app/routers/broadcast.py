@@ -1,15 +1,11 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, status
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from app.schemas.broadcast import (
-    CreateBroadcastRequest,
-    BroadcastMessage,
-    BroadcastRecipientReceipt
-)
+from app.schemas.broadcast import CreateBroadcastRequest
 from app.services.broadcast_service import BroadcastService
 from app.services.broadcast_email_worker import BroadcastBatchEmailWorker
 from app.services.auth_service import get_current_user
-from app.database import get_collection, fix_ids
+from app.database import get_collection
 
 router = APIRouter(prefix="/api/broadcasts", tags=["Company Broadcasts & Announcements"])
 
@@ -44,15 +40,6 @@ async def publish_broadcast(
     }
 
 
-@router.get("/in-app/my-notifications", status_code=status.HTTP_200_OK)
-async def get_my_in_app_notifications(current_user: Dict[str, Any] = Depends(get_current_user)):
-    emp_id = await BroadcastService.employee_code_for_account(current_user)
-    notif_col = get_collection("notifications")
-    cursor = notif_col.find({"recipient_employee_id": emp_id}).sort("created_at", -1)
-    docs = await cursor.to_list(50)
-    return {"success": True, "count": len(docs), "data": fix_ids(docs)}
-
-
 @router.post("/acknowledge/{broadcast_id}", status_code=status.HTTP_200_OK)
 async def acknowledge_broadcast_message(
     broadcast_id: str,
@@ -83,13 +70,3 @@ async def list_broadcasts(current_user: Dict[str, Any] = Depends(get_current_use
         history.append(info)
     return {"success": True, "data": history}
 
-
-@router.get("/analytics/{broadcast_id}", status_code=status.HTTP_200_OK)
-async def get_broadcast_analytics_dashboard(
-    broadcast_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    try:
-        return await BroadcastService.get_broadcast_analytics(broadcast_id)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))

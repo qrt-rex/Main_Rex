@@ -37,10 +37,6 @@ def now_local() -> datetime:
     return datetime.now(tz())
 
 
-def _utc_iso(dt: datetime) -> str:
-    return dt.astimezone(pytz.utc).replace(tzinfo=None).isoformat()
-
-
 def _parse_utc(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -372,7 +368,7 @@ async def onboarding_reminders(ctx: Ctx) -> str:
             continue
         last = _parse_utc(tok.get("automation_reminded_at") or tok.get("created_at"))
         if last and now - last.replace(tzinfo=None) >= timedelta(days=every) and tok.get("email"):
-            portal = f"{settings.COMPANY_WEBSITE}/joining-login.html"
+            portal = f"{settings.COMPANY_WEBSITE}/joining"
             if await send(tok["email"], f"Reminder: complete your Rexera onboarding ({tok.get('token')})", "Complete your onboarding",
                           f"<p>Dear {_e(tok.get('full_name'))},</p><p>Your onboarding is not complete yet. Use joining token "
                           f"<b>{_e(tok.get('token'))}</b> on the <a href=\"{_e(portal)}\">onboarding portal</a> before "

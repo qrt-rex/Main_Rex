@@ -125,12 +125,6 @@ class EmployeeService:
         return fix_id(res)
 
     @classmethod
-    async def get_employee_by_code(cls, code: str) -> Optional[Dict[str, Any]]:
-        col = get_collection("employees")
-        doc = await col.find_one({"employee_code": code})
-        return fix_id(doc)
-
-    @classmethod
     async def update_employee(cls, emp_id: str, req: EmployeeUpdateRequest) -> Optional[Dict[str, Any]]:
         col = get_collection("employees")
         update_data = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}

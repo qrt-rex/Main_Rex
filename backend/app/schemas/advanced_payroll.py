@@ -1,6 +1,5 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
-from datetime import datetime
 from app.utils.validators import require_iso_date, require_month_name
 
 Year = Field(..., ge=2000, le=2100)
@@ -43,9 +42,6 @@ class SalaryStructureBase(BaseModel):
     overtime_rate_per_hour: float = Field(default=0.0, ge=0)
     is_active: bool = True
     remarks: Optional[str] = None
-
-class SalaryStructureCreate(SalaryStructureBase):
-    pass
 
 class SalaryStructureUpdate(BaseModel):
     salary_type: Optional[str] = None
@@ -103,14 +99,6 @@ class SalaryAdvanceCreate(BaseModel):
         if self.monthly_deduction_amount > self.advance_amount:
             raise ValueError("The monthly installment cannot be larger than the advance itself.")
         return self
-
-class SalaryAdvanceUpdate(BaseModel):
-    advance_amount: Optional[float] = None
-    reason: Optional[str] = None
-    monthly_deduction_amount: Optional[float] = None
-    start_month: Optional[str] = None
-    start_year: Optional[int] = None
-    status: Optional[str] = None
 
 class AdvanceApprovalRequest(BaseModel):
     action: str = Field(..., pattern="^(approve|reject)$")

@@ -92,6 +92,10 @@ async def set_user_access(user_id: str, body: AccessUpdate, request: Request, ad
     unknown = [p for p in [*body.grants, *body.denies] if p not in rbac.ALL_PERMISSIONS]
     if unknown:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown permission: {unknown[0]}.")
+    blocked = [p for p in body.grants if rbac.reserved_blocked(p, [primary, *extra])]
+    if blocked:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"{blocked[0]} is reserved for {', '.join(sorted(rbac.ROLE_RESERVED_PERMISSIONS[blocked[0]]))}; give the person one of those roles instead.")
     if set(body.grants) & set(body.denies):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A permission can't be both allowed and denied.")
     grants = [p for p in rbac.ALL_PERMISSIONS if p in set(body.grants)]

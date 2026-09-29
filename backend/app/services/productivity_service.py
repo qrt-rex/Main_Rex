@@ -1,16 +1,9 @@
 import logging
-from datetime import datetime, date
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from typing import Dict, Any
 
-from app.database import get_collection, fix_id, fix_ids
-from app.schemas.productivity import (
-    TimesheetEntry,
-    ProjectTask,
-    TaskStatus,
-    LogTimesheetRequest,
-    FlagBlockerRequest,
-    UtilizationHealthStatus
-)
+from app.database import get_collection, fix_id
+from app.schemas.productivity import TimesheetEntry, TaskStatus, LogTimesheetRequest, FlagBlockerRequest
 
 logger = logging.getLogger("rexera.productivity")
 

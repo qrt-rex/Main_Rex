@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarCheck, Megaphone, PartyPopper, UserPlus } from 'lucide-react';
+import { Bell, CalendarCheck, CircleCheck, Megaphone, PartyPopper, UserPlus } from 'lucide-react';
 import { useNotifications, type NotificationItem } from '../lib/notifications';
+import { api, ApiError } from '../lib/api';
+import { useToast } from '../components/common/ToastContext';
 import { relativeTime } from '../lib/format';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
@@ -11,20 +14,39 @@ import { PageHeader } from '../components/layout/PageHeader';
 
 const icons: Record<NotificationItem['type'], typeof Bell> = {
   approval: CalendarCheck,
+  update: CircleCheck,
   recruitment: UserPlus,
   onboarding: PartyPopper,
   broadcast: Megaphone,
 };
 
+/** Broadcast text as plain text: the HTML is written by HR, so it is never injected into the page. */
+const plain = (html = '') => new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim() ?? '';
+
 export function Notifications() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { items, loading, error, unreadCount, isUnread, markAllRead, reload } = useNotifications();
+  const [acking, setAcking] = useState<string | null>(null);
+
+  const acknowledge = async (n: NotificationItem) => {
+    setAcking(n.id);
+    try {
+      await api.post(`/api/broadcasts/acknowledge/${encodeURIComponent(n.broadcast_id ?? '')}`);
+      showToast('Acknowledged. HR can see that you have read it.', 'success');
+      reload();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not acknowledge', 'error');
+    } finally {
+      setAcking(null);
+    }
+  };
 
   return (
     <>
       <PageHeader
         title="Notifications"
-        description="Updates from the modules you have access to."
+        description="Requests waiting on your decision, the outcome of your own requests, and updates from your modules."
         actions={unreadCount > 0 && <Button variant="secondary" onClick={markAllRead}>Mark all as read</Button>}
       />
       <Card>
@@ -40,8 +62,8 @@ export function Notifications() {
               const Icon = icons[n.type];
               const unread = isUnread(n);
               return (
-                <li key={n.id}>
-                  <button onClick={() => navigate(n.link)} className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-secondary">
+                <li key={n.id} className="flex flex-col">
+                  <button onClick={() => n.type !== 'broadcast' && navigate(n.link)} className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-secondary">
                     <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-bg text-text-muted">
                       <Icon size={15} aria-hidden="true" />
                     </span>
@@ -54,6 +76,12 @@ export function Notifications() {
                       {unread && <span className="h-2 w-2 rounded-full bg-primary" aria-label="Unread" />}
                     </span>
                   </button>
+                  {n.type === 'broadcast' && (n.body || n.needs_ack) && (
+                    <div className="-mt-1 space-y-2 px-4 pb-3.5 pl-15">
+                      {n.body && <p className="whitespace-pre-line text-sm text-text-secondary">{plain(n.body)}</p>}
+                      {n.needs_ack && <Button size="sm" loading={acking === n.id} onClick={() => acknowledge(n)}><CircleCheck size={14} /> Acknowledge</Button>}
+                    </div>
+                  )}
                 </li>
               );
             })}

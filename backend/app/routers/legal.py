@@ -3,14 +3,14 @@ import csv
 from datetime import datetime
 from html import escape
 from typing import Any, Dict, List, Literal, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.database import get_collection
 from app.services.auth_service import get_current_admin
+from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role
 from app.services.email_service import EmailService
-from app.services.rbac_service import enforce
 
 router = APIRouter(prefix="/api/legal", tags=["Legal Compliance"])
 
@@ -22,7 +22,6 @@ LegalStatus = Literal["PENDING", "UNDER REVIEW", "APPROVED", "HOLD", "REJECTED"]
 # assign, approve and import. Anyone else with Legal access sees only the clients assigned to them.
 # ---------------------------------------------------------------------------
 async def full_legal_access(admin: Dict[str, Any]) -> bool:
-    from app.services.rbac_service import get_user_permissions, has_role
     return has_role(admin, "legal") or has_role(admin, "superadmin") or "legal.manage" in await get_user_permissions(admin)
 
 
@@ -497,7 +496,6 @@ def _matches(c: Dict[str, Any], search: str) -> bool:
 async def list_staff(admin: Dict[str, Any] = Depends(get_current_admin)):
     """Active users a client can be assigned to (any role; Admins listed first)."""
     await require_full_legal(admin)
-    from app.services.rbac_service import ROLES, normalize_role
     labels = {r["id"]: r["label"] for r in ROLES}
     docs = await get_collection("admins").find({}).to_list(1000)
     staff = [{"id": str(d["_id"]), "name": d.get("username") or d.get("email", ""), "email": d.get("email", ""),

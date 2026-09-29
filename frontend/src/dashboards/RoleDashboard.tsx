@@ -11,7 +11,6 @@ import { AdminDashboard } from './AdminDashboard';
 import { ItDashboard } from './ItDashboard';
 import { SalesDashboard } from './SalesDashboard';
 import { SupportDashboard } from './SupportDashboard';
-import { EmployeeDashboard } from './EmployeeDashboard';
 import { LegalDashboard } from './LegalDashboard';
 import { AssignedClientsCard } from './LegalClients';
 import { canViewDashboard, dashboardPathFor } from './roles';
@@ -22,19 +21,18 @@ const DASHBOARDS: Record<string, ComponentType<{ summary: WorkspaceSummary }>> =
   it: ItDashboard,
   sales: SalesDashboard,
   support: SupportDashboard,
-  employee: EmployeeDashboard,
 };
 
-/** One request feeds the whole dashboard; the role decides how it is laid out. */
+/** Picks the layout; roles without a purpose-built one (HR) get the permission-driven workspace. */
 function Body({ slug }: { slug: string }) {
-  if (slug === 'legal') {
-    return <LegalDashboard />;
-  }
-  const { data, status, error, reload } = useApi(workspaceSummary);
+  if (slug === 'legal') return <LegalDashboard />;
   const View = DASHBOARDS[slug];
+  return View ? <SummaryDashboard View={View} /> : <Dashboard />;
+}
 
-  // Roles without a purpose-built layout (HR, Legal) get the permission-driven workspace.
-  if (!View) return <Dashboard />;
+/** One request feeds the whole dashboard; the role decides how it is laid out. */
+function SummaryDashboard({ View }: { View: ComponentType<{ summary: WorkspaceSummary }> }) {
+  const { data, status, error, reload } = useApi(workspaceSummary);
 
   if (status === 'error') {
     return (

@@ -9,12 +9,11 @@ const ROLE_HOME: Record<string, string> = {
   it: '/dashboard/it',
   sales: '/dashboard/sales',
   support: '/dashboard/support',
-  employee: '/dashboard/employee',
   hr: '/dashboard/hr',
   legal: '/dashboard/legal',
 };
 
-export const DASHBOARD_SLUGS = ['admin', 'it', 'sales', 'support', 'employee', 'hr', 'legal', 'workspace'] as const;
+export const DASHBOARD_SLUGS = ['admin', 'it', 'sales', 'support', 'hr', 'legal', 'workspace'] as const;
 export type DashboardSlug = (typeof DASHBOARD_SLUGS)[number];
 
 export function dashboardPathFor(role?: string | null): string {

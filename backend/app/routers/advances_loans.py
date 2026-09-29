@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from app.services.auth_service import get_current_admin
 from app.services.advance_loan_service import AdvanceLoanService
-from app.database import get_collection, fix_ids, fix_id
+from app.database import get_collection, fix_id
 from app.schemas.advanced_payroll import (
     SalaryAdvanceCreate,
     SalaryAdvanceResponse,

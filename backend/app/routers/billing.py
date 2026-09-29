@@ -6,22 +6,22 @@ clients, products, payments, reports and vector PDF generation.
 import base64
 import csv
 import io
-import os
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from xml.sax.saxutils import escape as _xml_escape
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_collection
 from app.services.auth_service import get_current_admin
+from app.services import sales_payroll
+from app.services.rbac_service import get_user_permissions, has_role
 from app.utils.validators import search_pattern
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 
 router = APIRouter(prefix="/api/billing", tags=["Billing & Invoices"])
@@ -344,15 +344,6 @@ def generate_invoice_pdf(invoice: Dict[str, Any]) -> bytes:
         topMargin=12 * mm,
         bottomMargin=12 * mm
     )
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'InvTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=20,
-        textColor=colors.HexColor('#0F172A')
-    )
     body_bold = ParagraphStyle('BodyB', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#0F172A'))
     body_normal = ParagraphStyle('BodyN', fontName='Helvetica', fontSize=8, leading=10.5, textColor=colors.HexColor('#334155'))
     table_hdr = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#FFFFFF'))
@@ -501,14 +492,11 @@ async def _require_tax_invoice_access(admin: dict, invoice_type: str) -> None:
     """Tax invoices are HR-only; anyone with billing.create may issue proforma invoices."""
     if invoice_type != "invoice":
         return
-    from app.services.rbac_service import get_user_permissions
     if "billing.tax_invoice" not in await get_user_permissions(admin):
         raise HTTPException(status_code=403, detail="Only HR can issue or edit tax invoices. You can issue proforma invoices.")
 
 async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, str]:
     """The sales account a sale (and its collections) is credited to: the one named, else the creator if they are sales."""
-    from app.services import sales_payroll
-    from app.services.rbac_service import has_role
     email = str(email or "").strip().lower()
     if not email and has_role(admin, "sales"):
         email = str(admin.get("email") or "").strip().lower()
@@ -522,16 +510,10 @@ async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, 
 @router.get("/sales-people")
 async def list_sales_people(admin: dict = Depends(get_current_admin)):
     """Sales accounts an invoice can be credited to."""
-    from app.services.rbac_service import has_role
     users = [u for u in await get_collection("admins").find({}).to_list(2000)
              if u.get("is_active", True) and has_role(u, "sales")]
     items = [{"email": str(u.get("email") or "").lower(), "name": u.get("username") or u.get("email", "")} for u in users]
     return {"success": True, "items": sorted(items, key=lambda i: i["name"].lower())}
-
-@router.get("/branches")
-async def get_branches(admin: dict = Depends(get_current_admin)):
-    """Lists available branches."""
-    return {"success": True, "items": list(BRANCHES_MASTER.values())}
 
 @router.get("/invoices/next-number")
 async def get_next_invoice_number(
@@ -770,11 +752,6 @@ async def get_invoice_pdf_endpoint(
 # ---------------------------------------------------------------------------
 # Quotations Endpoints
 # ---------------------------------------------------------------------------
-
-@router.get("/quotations/next-number")
-async def get_next_quotation_number(admin: dict = Depends(get_current_admin)):
-    next_num = await generate_next_number(doc_type="quotation", reserve=False)
-    return {"success": True, "quotation_number": next_num}
 
 @router.get("/quotations")
 async def list_quotations(
@@ -1250,41 +1227,12 @@ async def get_aging_report(admin: dict = Depends(get_current_admin)):
         "buckets": {k: round(v, 2) for k, v in buckets.items()},
     }
 
-@router.get("/settings")
-async def get_billing_settings(admin: dict = Depends(get_current_admin)):
-    coll = get_collection("billing_settings")
-    s = await coll.find_one({"key": "main_config"})
-    if not s:
-        s = {
-            "company_name": "REXERA FINANCIAL SERVICES PRIVATE LIMITED",
-            "gstin": "24AAOCR9991A1ZZ",
-            "state": "Gujarat",
-            "state_code": "24",
-            "phone": "9898187478",
-            "email": "contact@rexera.co.in",
-            "branches": list(BRANCHES_MASTER.values())
-        }
-    return {"success": True, "settings": s}
-
-@router.put("/settings")
-async def update_billing_settings(payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
-    coll = get_collection("billing_settings")
-    payload = {k: v for k, v in payload.items() if k not in ("_id", "id", "key")}
-    await coll.update_one({"key": "main_config"}, {"$set": {"key": "main_config", **payload}}, upsert=True)
-    return {"success": True, "message": "Settings updated"}
-
-@router.get("/export/zip")
-async def export_zip(admin: dict = Depends(get_current_admin)):
-    return {"success": True, "message": "ZIP batch download ready"}
-
-
 # ---------------------------------------------------------------------------
 # Invoice requests, documents, payment reversal, exports & monthly summary
 # (features carried over from the standalone Bill-Invoice module)
 # ---------------------------------------------------------------------------
 
 async def _can_manage_billing(admin: dict) -> bool:
-    from app.services.rbac_service import get_user_permissions
     return "billing.manage" in await get_user_permissions(admin)
 
 def _who(admin: dict) -> str:
@@ -1356,7 +1304,6 @@ async def create_request(payload: Dict[str, Any], admin: dict = Depends(get_curr
     seq = ((await counters.find_one({"key": "REQUEST"})) or {}).get("sequence_value", 0) + 1
     await counters.update_one({"key": "REQUEST"}, {"$set": {"key": "REQUEST", "sequence_value": seq}}, upsert=True)
     rid = str(uuid.uuid4())
-    from app.services.rbac_service import has_role
     is_sales = has_role(admin, "sales")
     doc = {**_clean_request(payload), "id": rid, "_id": rid, "sales_person_email": _who(admin).lower() if is_sales else "", "request_number": f"REQ-{seq:04d}", "status": "pending",
            "requested_by": _who(admin), "requested_by_name": admin.get("name") or _who(admin),

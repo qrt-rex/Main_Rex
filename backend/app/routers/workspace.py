@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends
 
 from app.config import settings
 from app.database import db_manager, get_collection
+from app.services import inbox
 from app.services.auth_service import get_current_admin
 from app.services import rbac_service as rbac
 
@@ -116,16 +117,6 @@ async def _recruitment() -> Dict[str, Any]:
     }
 
 
-async def _approvals() -> List[Dict[str, Any]]:
-    pending = await get_collection("leave_requests").find({"status": "PENDING"}).sort("created_at", -1).to_list(25)
-    return [{
-        "id": str(l.get("_id")),
-        "title": "{} · {}".format(l.get("employee_name") or "Employee", str(l.get("leave_type") or "Leave").title()),
-        "description": "{} to {} · {} day(s)".format(l.get("start_date"), l.get("end_date"), l.get("total_days") or 0),
-        "timestamp": _iso(l.get("created_at")),
-        "link": "/hr/leave",
-        "tone": "warning",
-    } for l in pending]
 
 
 def _task_item(t: Dict[str, Any]) -> Dict[str, Any]:
@@ -218,10 +209,23 @@ async def _me(admin: Dict[str, Any]) -> Dict[str, Any]:
         {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}) if email else None
     out: Dict[str, Any] = {"employee": None, "tasks": [], "leaves": [], "payslip": None}
 
+    # Leave requests are keyed by employee code (older ones by record id); a login without an
+    # employee record requests leave under its own email.
+    leave_keys = [k for k in ((employee or {}).get("employee_code"), (employee or {}).get("employee_id"), str((employee or {}).get("_id") or "")) if k]
+    if email:
+        leaves = await get_collection("leave_requests").find(
+            {"$or": [{"employee_id": {"$in": leave_keys}}, {"employee_email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}]}
+        ).sort("created_at", -1).to_list(5)
+        out["leaves"] = [{
+            "id": str(l.get("_id")),
+            "title": str(l.get("leave_type") or "Leave").title(),
+            "description": "{} to {}".format(l.get("start_date"), l.get("end_date")),
+            "status": l.get("status"),
+            "timestamp": _iso(l.get("created_at")),
+        } for l in leaves]
+
     if employee:
         emp_id = str(employee.get("_id"))
-        # Leave requests are keyed by employee code (older ones by record id).
-        leave_keys = [k for k in (employee.get("employee_code"), employee.get("employee_id"), emp_id) if k]
         out["employee"] = {
             "full_name": employee.get("full_name"),
             "employee_code": employee.get("employee_code"),
@@ -230,14 +234,6 @@ async def _me(admin: Dict[str, Any]) -> Dict[str, Any]:
             "joining_date": employee.get("date_of_joining") or employee.get("joining_date"),
             "status": employee.get("employee_status"),
         }
-        leaves = await get_collection("leave_requests").find({"employee_id": {"$in": leave_keys}}).sort("created_at", -1).to_list(5)
-        out["leaves"] = [{
-            "id": str(l.get("_id")),
-            "title": str(l.get("leave_type") or "Leave").title(),
-            "description": "{} to {}".format(l.get("start_date"), l.get("end_date")),
-            "status": l.get("status"),
-            "timestamp": _iso(l.get("created_at")),
-        } for l in leaves]
         slips = await get_collection("salary_slips").find({"employee_id": emp_id}).sort("created_at", -1).to_list(1)
         if slips:
             out["payslip"] = {
@@ -277,8 +273,8 @@ async def workspace_summary(admin: Dict[str, Any] = Depends(get_current_admin)):
         jobs["payroll"] = _payroll()
     if "hr.recruitment.view" in granted:
         jobs["recruitment"] = _recruitment()
-    if "hr.leave.approve" in granted:
-        jobs["approvals"] = _approvals()
+    # Only what this user may decide (leave by hierarchy, invoice requests, client documents).
+    jobs["approvals"] = inbox.approvals_for(admin)
     if {"clients.view", "hr.productivity.view"} & granted:
         jobs["clients"] = _clients()
     if "users.manage" in granted:

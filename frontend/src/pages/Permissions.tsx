@@ -11,7 +11,7 @@ import { useToast } from '../components/common/ToastContext';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PermissionMatrix, type CatalogGroup, type RoleDef } from '../components/permissions/PermissionMatrix';
 
-interface Catalog { roles: RoleDef[]; groups: CatalogGroup[] }
+interface Catalog { roles: RoleDef[]; groups: CatalogGroup[]; reserved?: Record<string, string[]> }
 
 export function Permissions() {
   const { refresh } = useAuth();
@@ -76,7 +76,7 @@ export function Permissions() {
         {active.groups.map((g) => (
           <Card key={g.id}>
             <CardHeader title={g.label} description={`${g.permissions.length} permissions`} />
-            <PermissionMatrix group={g} roles={catalog.data!.roles} matrix={matrix.data!} pending={pending} onToggle={toggle} />
+            <PermissionMatrix group={g} roles={catalog.data!.roles} matrix={matrix.data!} reserved={catalog.data!.reserved} pending={pending} onToggle={toggle} />
           </Card>
         ))}
       </div>

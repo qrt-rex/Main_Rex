@@ -11,7 +11,6 @@ if backend_dir not in sys.path:
 from app.config import settings
 from app.database import db_manager, get_collection
 from app.utils.security import hash_password
-from app.utils.tokens import generate_alphanumeric_token
 from app.services.payroll_service import PayrollService
 from app.schemas.advanced_payroll import SinglePayrollCalculationRequest
 

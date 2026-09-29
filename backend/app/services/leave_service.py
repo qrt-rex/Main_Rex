@@ -1,9 +1,9 @@
 import logging
 import re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
-from app.database import get_collection, fix_id, fix_ids
+from app.database import get_collection, fix_id
 from app.services.rbac_service import normalize_role, user_roles
 from app.schemas.leave import (
     LeaveRequest,
@@ -139,10 +139,11 @@ class LeaveService:
         )
 
     @classmethod
-    async def apply_leave(cls, payload: LeaveApplicationRequest) -> Dict[str, Any]:
+    async def apply_leave(cls, payload: LeaveApplicationRequest, applicant: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """applicant: the person asking for their own leave (an employee record, or a login without one)."""
         leave_col = get_collection("leave_requests")
 
-        emp = await cls.resolve_employee(payload.employee_id)
+        emp = applicant or await cls.resolve_employee(payload.employee_id)
         if not emp:
             raise ValueError(f"Employee {payload.employee_id} not found.")
         if not emp.get("email"):

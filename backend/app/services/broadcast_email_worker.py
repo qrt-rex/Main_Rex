@@ -1,7 +1,7 @@
 import asyncio
 import html
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict
 from app.services.email_service import EmailService
 from app.database import get_collection
 
@@ -36,7 +36,7 @@ class BroadcastBatchEmailWorker:
         ack_banner = ""
         if requires_ack:
             # (This used to link to a hard-coded http://127.0.0.1:8080 address.)
-            ack_banner = f"""
+            ack_banner = """
             <div style="background:#fff3cd; border-left:4px solid #ffc107; padding:14px; margin:20px 0; border-radius:4px;">
                 <strong style="color:#856404;">Action Required:</strong>
                 Please sign in to the Rexera HR portal to read and acknowledge this notice.

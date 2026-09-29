@@ -4,15 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query
 from app.services.auth_service import get_current_admin
 from app.services.audit_service import AuditService
 from app.services.email_service import EmailService
-from app.database import get_collection, fix_id, fix_ids
-from app.config import settings
-from app.schemas.advanced_payroll import (
-    CompanyPayrollSettings,
-    SMTPSettings,
-    EmailTemplateConfig,
-    AuditLogEntry,
-    EmailLogResponse
-)
+from app.database import get_collection, fix_id
+from app.schemas.advanced_payroll import CompanyPayrollSettings, AuditLogEntry, EmailLogResponse
 from datetime import datetime
 
 logger = logging.getLogger("rexera.router.settings")

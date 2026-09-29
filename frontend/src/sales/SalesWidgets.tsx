@@ -422,7 +422,8 @@ export function LeadsCard({ leads, onChanged }: { leads: Lead[]; onChanged: () =
 }
 
 // ---------------------------------------------------------------- 1. Schemes Box
-export function SchemesCard({ schemes, onChanged }: { schemes: Scheme[]; onChanged?: () => void }) {
+/** canManage comes from the server (Admin, Legal, Super Admin); everyone else only views. */
+export function SchemesCard({ schemes, onChanged, canManage = false }: { schemes: Scheme[]; onChanged?: () => void; canManage?: boolean }) {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
@@ -454,19 +455,19 @@ export function SchemesCard({ schemes, onChanged }: { schemes: Scheme[]; onChang
       <CardHeader
         title="Current Schemes & Offers"
         description={`${schemes.length} active client discount & bundle schemes`}
-        actions={
+        actions={canManage && (
           <Button size="sm" onClick={() => { setEditingScheme(null); setModalOpen(true); }}>
             <Plus size={14} /> Add scheme
           </Button>
-        }
+        )}
       />
       {schemes.length === 0 ? (
         <EmptyState
           compact
           icon={Gift}
           title="No active schemes"
-          description="Create client discount packages and seasonal incentives."
-          action={<Button size="sm" variant="secondary" onClick={() => { setEditingScheme(null); setModalOpen(true); }}><Plus size={14} /> Add first scheme</Button>}
+          description={canManage ? 'Create client discount packages and seasonal incentives.' : 'New offers from your managers appear here, and in your notifications.'}
+          action={canManage ? <Button size="sm" variant="secondary" onClick={() => { setEditingScheme(null); setModalOpen(true); }}><Plus size={14} /> Add first scheme</Button> : undefined}
         />
       ) : (
         <ul className="max-h-[360px] divide-y divide-border overflow-y-auto">
@@ -497,7 +498,7 @@ export function SchemesCard({ schemes, onChanged }: { schemes: Scheme[]; onChang
                       {copiedId === s.id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                       <span className="sr-only">Copy</span>
                     </Button>
-                    {onChanged && (
+                    {canManage && (
                       <>
                         <Button size="sm" variant="ghost" onClick={() => { setEditingScheme(s); setModalOpen(true); }} title="Edit scheme">
                           <Sparkles size={14} />
@@ -526,7 +527,7 @@ export function SchemesCard({ schemes, onChanged }: { schemes: Scheme[]; onChang
 }
 
 // ---------------------------------------------------------------- 2. Flyers & Posts Box
-export function FlyersPostsCard({ materials, onChanged }: { materials: Material[]; onChanged?: () => void }) {
+export function FlyersPostsCard({ materials, onChanged, canManage = false }: { materials: Material[]; onChanged?: () => void; canManage?: boolean }) {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
@@ -560,19 +561,19 @@ export function FlyersPostsCard({ materials, onChanged }: { materials: Material[
       <CardHeader
         title="Flyers & Social Posts"
         description={`${items.length} marketing posters, social graphics & brochures`}
-        actions={
+        actions={canManage && (
           <Button size="sm" onClick={() => setModalOpen(true)}>
             <Plus size={14} /> Add flyer / post
           </Button>
-        }
+        )}
       />
       {items.length === 0 ? (
         <EmptyState
           compact
           icon={ImageIcon}
           title="No flyers or posts yet"
-          description="Upload marketing images, flyers and social media banners for your team."
-          action={<Button size="sm" variant="secondary" onClick={() => setModalOpen(true)}><Plus size={14} /> Add first flyer</Button>}
+          description={canManage ? 'Upload marketing images, flyers and social media banners for your team.' : 'Flyers and posts shared with the team appear here.'}
+          action={canManage ? <Button size="sm" variant="secondary" onClick={() => setModalOpen(true)}><Plus size={14} /> Add first flyer</Button> : undefined}
         />
       ) : (
         <ul className="max-h-[360px] divide-y divide-border overflow-y-auto">
@@ -614,7 +615,7 @@ export function FlyersPostsCard({ materials, onChanged }: { materials: Material[
                         <ExternalLink size={14} />
                       </a>
                     )}
-                    {onChanged && (
+                    {canManage && (
                       <Button size="sm" variant="ghost" onClick={() => remove(m)} title="Delete">
                         <Trash2 size={14} />
                       </Button>
@@ -660,7 +661,7 @@ export function FlyersPostsCard({ materials, onChanged }: { materials: Material[
 }
 
 // ---------------------------------------------------------------- 3. Sales Information Box
-export function SalesInfoCard({ materials, onChanged }: { materials: Material[]; onChanged?: () => void }) {
+export function SalesInfoCard({ materials, onChanged, canManage = false }: { materials: Material[]; onChanged?: () => void; canManage?: boolean }) {
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
@@ -698,11 +699,11 @@ export function SalesInfoCard({ materials, onChanged }: { materials: Material[];
       <CardHeader
         title="Sales Information & FAQs"
         description={`${items.length} pricing sheets, pitches & product knowledge`}
-        actions={
+        actions={canManage && (
           <Button size="sm" onClick={() => { setEditingInfo(null); setModalOpen(true); }}>
             <Plus size={14} /> Add sales info
           </Button>
-        }
+        )}
       />
       {items.length > 3 && (
         <div className="px-4 py-2 border-b border-border bg-surface-secondary/30">
@@ -714,8 +715,8 @@ export function SalesInfoCard({ materials, onChanged }: { materials: Material[];
           compact
           icon={Info}
           title={search ? 'No matching info found' : 'No sales information yet'}
-          description="Add pricing guides, talking points, objection handling and FAQs for client calls."
-          action={<Button size="sm" variant="secondary" onClick={() => { setEditingInfo(null); setModalOpen(true); }}><Plus size={14} /> Add first sales info</Button>}
+          description={canManage ? 'Add pricing guides, talking points, objection handling and FAQs for client calls.' : 'Pricing guides, talking points and FAQs shared with the team appear here.'}
+          action={canManage ? <Button size="sm" variant="secondary" onClick={() => { setEditingInfo(null); setModalOpen(true); }}><Plus size={14} /> Add first sales info</Button> : undefined}
         />
       ) : (
         <ul className="max-h-[360px] divide-y divide-border overflow-y-auto">
@@ -747,7 +748,7 @@ export function SalesInfoCard({ materials, onChanged }: { materials: Material[];
                       {copiedId === m.id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                       <span className="sr-only">Copy</span>
                     </Button>
-                    {onChanged && (
+                    {canManage && (
                       <Button size="sm" variant="ghost" onClick={() => remove(m)} title="Delete">
                         <Trash2 size={14} />
                       </Button>
@@ -771,11 +772,11 @@ export function SalesInfoCard({ materials, onChanged }: { materials: Material[];
 }
 
 // ---------------------------------------------------------------- Backward compatibility
-export function MaterialsCard({ materials, onChanged }: { materials: Material[]; onChanged?: () => void }) {
+export function MaterialsCard({ materials, onChanged, canManage = false }: { materials: Material[]; onChanged?: () => void; canManage?: boolean }) {
   return (
     <div className="space-y-4">
-      <FlyersPostsCard materials={materials} onChanged={onChanged} />
-      <SalesInfoCard materials={materials} onChanged={onChanged} />
+      <FlyersPostsCard materials={materials} onChanged={onChanged} canManage={canManage} />
+      <SalesInfoCard materials={materials} onChanged={onChanged} canManage={canManage} />
     </div>
   );
 }
@@ -798,7 +799,7 @@ export function TeamProgressCard({ rows, title = 'Sales team progress', descript
               {rows.map((r, i) => (
                 <tr key={r.user_id}>
                   <td className="px-4 py-2.5"><span className="flex items-center gap-1.5 font-medium text-text">{i === 0 && r.converted > 0 && <Trophy size={13} className="text-warning" />}{r.name}</span></td>
-                  <td className="px-3 py-2.5"><Badge tone={dayTone[r.day_status]} dot>{dayLabel[r.day_status]}</Badge>{r.hours_today > 0 && <span className="ml-1 text-xs text-text-muted">{r.hours_today.toFixed(1)} h</span>}</td>
+                  <td className="px-3 py-2.5">{r.day_status ? <><Badge tone={dayTone[r.day_status]} dot>{dayLabel[r.day_status]}</Badge>{r.hours_today > 0 && <span className="ml-1 text-xs text-text-muted">{r.hours_today.toFixed(1)} h</span>}</> : <span className="text-text-muted" title="Only HR and Admin see other people's attendance">—</span>}</td>
                   <td className="px-3 py-2.5">
                     <span className="flex items-center gap-2"><span className="w-6 tabular-nums text-text">{number(r.calls)}</span>
                       <span className="h-1.5 w-20 overflow-hidden rounded-full bg-neutral-bg"><span className="block h-full rounded-full bg-primary" style={{ width: `${(r.calls / best) * 100}%` }} /></span></span>

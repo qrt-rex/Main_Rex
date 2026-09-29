@@ -45,23 +45,3 @@ class AuditService:
         
         docs = await col.find(query).sort("timestamp", -1).to_list(limit)
         return fix_ids(docs)
-
-    @classmethod
-    async def create_notification(cls, title: str, message: str, category: str = "payroll", link: Optional[str] = None):
-        col = get_collection("notifications")
-        now_str = datetime.utcnow().isoformat()
-        doc = {
-            "title": title,
-            "message": message,
-            "category": category,
-            "link": link,
-            "is_read": False,
-            "created_at": now_str
-        }
-        await col.insert_one(doc)
-
-    @classmethod
-    async def get_notifications(cls, limit: int = 50) -> List[Dict[str, Any]]:
-        col = get_collection("notifications")
-        docs = await col.find({}).sort("created_at", -1).to_list(limit)
-        return fix_ids(docs)

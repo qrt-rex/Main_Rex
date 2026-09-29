@@ -14,12 +14,14 @@ interface Props {
   group: CatalogGroup;
   roles: RoleDef[];
   matrix: Record<string, string[]>;
+  /** permission -> the only roles that may ever hold it (fixed on the server). */
+  reserved?: Record<string, string[]>;
   pending: Set<string>;
   onToggle: (role: string, permission: string, granted: boolean) => void;
 }
 
 /** One module's permissions × roles. Super Admin is shown as always-on and can't be edited. */
-export function PermissionMatrix({ group, roles, matrix, pending, onToggle }: Props) {
+export function PermissionMatrix({ group, roles, matrix, reserved = {}, pending, onToggle }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
@@ -40,8 +42,9 @@ export function PermissionMatrix({ group, roles, matrix, pending, onToggle }: Pr
                 <code className="text-[11px] text-text-muted">{p.key}</code>
               </th>
               {roles.map((r) => {
-                const locked = r.id === 'superadmin';
-                const granted = locked || (matrix[r.id] ?? []).includes(p.key);
+                const barred = !!reserved[p.key] && !reserved[p.key].includes(r.id);
+                const locked = r.id === 'superadmin' || barred;
+                const granted = r.id === 'superadmin' || (!barred && (matrix[r.id] ?? []).includes(p.key));
                 const busy = pending.has(`${r.id}:${p.key}`);
                 return (
                   <td key={r.id} className="border-b border-border px-2 py-2.5 text-center">
@@ -51,10 +54,10 @@ export function PermissionMatrix({ group, roles, matrix, pending, onToggle }: Pr
                       aria-checked={granted}
                       aria-label={`${p.label} for ${r.label}`}
                       disabled={locked || busy}
-                      title={locked ? 'Super Admin always has full access' : undefined}
+                      title={barred ? 'Fixed rule: not available to this role' : locked ? 'Super Admin always has full access' : undefined}
                       onClick={() => onToggle(r.id, p.key, !granted)}
                       className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors
-                        ${granted ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface text-transparent hover:border-primary'}
+                        ${granted ? 'border-primary bg-primary text-on-primary' : barred ? 'border-border bg-surface-secondary text-text-muted' : 'border-border-strong bg-surface text-transparent hover:border-primary'}
                         ${locked ? 'cursor-not-allowed opacity-60' : ''} ${busy ? 'animate-pulse' : ''}`}
                     >
                       {locked ? <Lock size={11} aria-hidden="true" /> : <Check size={13} strokeWidth={3} aria-hidden="true" />}

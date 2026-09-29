@@ -10,7 +10,6 @@ from app.schemas.candidate import (
 )
 from app.services.candidate_service import CandidateService
 from app.services.auth_service import get_current_admin
-from app.services.email_service import EmailService
 from app.services.log_service import LogService
 from app.utils.validators import row_error
 

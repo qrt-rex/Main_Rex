@@ -1,6 +1,5 @@
 import html
 import logging
-from typing import Dict, Any
 from app.services.email_service import EmailService
 
 logger = logging.getLogger("rexera.reports.worker")

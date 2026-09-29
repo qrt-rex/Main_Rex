@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from fastapi import HTTPException, status
 from app.database import get_collection, fix_id, fix_ids
 

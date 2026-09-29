@@ -99,7 +99,7 @@ export function LegalDashboard() {
 
       if (data.bdms && data.bdms.length > 0) setBdmOptions(data.bdms);
       if (data.services && data.services.length > 0) setServiceOptions(data.services);
-    } catch (err) {
+    } catch {
       showToast("Could not load legal records. Please check your connection.", "error");
     } finally {
       setLoading(false);

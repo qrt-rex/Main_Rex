@@ -5,11 +5,6 @@ class SendOTPRequest(BaseModel):
     email: EmailStr
     purpose: str = "onboarding"  # public purposes only: onboarding, candidate_apply
 
-class VerifyOTPRequest(BaseModel):
-    email: EmailStr
-    otp: str
-    purpose: str = "onboarding"
-
 class OTPResponse(BaseModel):
     success: bool
     message: str

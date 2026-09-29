@@ -48,6 +48,8 @@ const BillingPayments = lazy(() => import('./billing/BillingPayments').then((m) 
 const BillingReports = lazy(() => import('./billing/BillingReports').then((m) => ({ default: m.BillingReports })));
 const BillingRequests = lazy(() => import('./billing/BillingRequests').then((m) => ({ default: m.BillingRequests })));
 const BillingDocuments = lazy(() => import('./billing/BillingDocuments').then((m) => ({ default: m.BillingDocuments })));
+const CandidateApply = lazy(() => import('./pages/public/CandidateApply').then((m) => ({ default: m.CandidateApply })));
+const JoiningPortal = lazy(() => import('./pages/public/JoiningPortal').then((m) => ({ default: m.JoiningPortal })));
 const LegalDashboard = lazy(() => import('./dashboards/LegalDashboard').then((m) => ({ default: m.LegalDashboard })));
 
 /** Route element guarded by the same permission the registry uses for navigation. */
@@ -70,6 +72,14 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<RedirectIfAuthenticated><LoginPage /></RedirectIfAuthenticated>} />
+                {/* Public pages (no sign-in): candidate application and new-joiner onboarding. */}
+                <Route path="/apply" element={<Suspense fallback={<PageSkeleton />}><CandidateApply /></Suspense>} />
+                <Route path="/joining" element={<Suspense fallback={<PageSkeleton />}><JoiningPortal /></Suspense>} />
+                {/* Addresses of the removed HTML portal, still in old emails and bookmarks. */}
+                <Route path="/index.html" element={<Navigate to="/apply" replace />} />
+                <Route path="/joining-login.html" element={<Navigate to="/joining" replace />} />
+                <Route path="/joining-form.html" element={<Navigate to="/joining" replace />} />
+                <Route path="/admin-login.html" element={<Navigate to="/login" replace />} />
 
                 <Route element={<RequireAuth />}>
                   {/* Role dashboards: the control centre for each role, no module sidebar. */}

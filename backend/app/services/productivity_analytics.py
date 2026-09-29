@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Dict, Any, List
-from app.database import get_collection, fix_ids
+from typing import Dict, Any
+from app.database import get_collection
 from app.schemas.productivity import UtilizationHealthStatus
 
 

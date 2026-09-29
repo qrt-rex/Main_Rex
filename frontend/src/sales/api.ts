@@ -25,7 +25,9 @@ export interface Scheme { id: string; title: string; description: string; valid_
 export interface Material { id: string; title: string; kind: string; description: string; link: string; active: boolean; has_file: boolean; filename?: string; size?: number; created_at: string }
 export interface ProgressRow {
   user_id: string; name: string; email: string; leads_assigned: number; leads_open: number; calls: number; connected: number;
-  interested: number; converted: number; converted_total: number; follow_ups_due: number; day_status: string; hours_today: number;
+  interested: number; converted: number; converted_total: number; follow_ups_due: number;
+  /** null for other people unless you are HR, Admin or Super Admin: attendance is private. */
+  day_status: 'NOT_STARTED' | 'WORKING' | 'DAY_ENDED' | null; hours_today: number;
 }
 export interface AttendanceRow {
   user_id: string; name: string; email: string; role_label: string; status: 'NOT_STARTED' | 'WORKING' | 'DAY_ENDED';

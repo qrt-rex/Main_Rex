@@ -21,6 +21,7 @@ import { DashboardIntro } from './DashboardShell';
 import { SalesToday } from '../sales/SalesToday';
 import { QuickLeadModal } from '../sales/SalesWidgets';
 import { ClientDocumentFormModal, MyDocumentForms } from './ClientDocumentForm';
+import { PayslipPreview } from '../hr/components';
 import type { TaskItem, WorkspaceSummary } from './api';
 
 /** Sales control centre: sales hub, schemes, flyers, sales knowledge, client progress and integrated employee records. */
@@ -29,6 +30,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
   const { clients, updates, activity, me } = summary;
   const [docFormOpen, setDocFormOpen] = useState(false);
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
+  const [slipOpen, setSlipOpen] = useState<string | null>(null);
   const [formsVersion, setFormsVersion] = useState(0);
 
   const openLeave = me.leaves.filter((l) => (l.status ?? '').toUpperCase() === 'PENDING').length;
@@ -96,6 +98,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
         <StatCard icon={ListChecks} label="Your assigned tasks" value={number(me.tasks.length)} hint="Personal work queue" />
         <StatCard icon={CalendarDays} tone="warning" label="Leave requests" value={number(openLeave)} hint={`${me.leaves.length} on record`} to={can('hr.leave.view') ? '/hr/leave' : undefined} />
         {me.payslip && <StatCard icon={Wallet} tone="info" label="Latest payslip" value={money(me.payslip.net_salary)} hint={me.payslip.period || 'Most recent'} to={can('hr.payroll.view') ? '/hr/payroll' : undefined} />}
+        <PayslipPreview id={slipOpen} onClose={() => setSlipOpen(null)} />
         <StatCard icon={Megaphone} label="Company announcements" value={number(updates.length)} hint="Active updates" to={can('hr.broadcasts.view') ? '/hr/broadcasts' : undefined} />
       </StatGrid>
 
@@ -183,6 +186,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
             <DetailCard
               title="Latest salary slip"
               description="Issued to you"
+              actions={<Button size="sm" variant="secondary" onClick={() => setSlipOpen(me.payslip!.id)}>View payslip</Button>}
               rows={[
                 ['Pay period', me.payslip.period || 'Most recent'],
                 ['Net pay', money(me.payslip.net_salary)],

@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from app.database import get_collection, fix_id, fix_ids
-from app.config import settings
 from app.services.calculation_engine import CalculationEngine
 from app.services.advance_loan_service import AdvanceLoanService
 from app.services.audit_service import AuditService
@@ -894,7 +893,6 @@ class PayrollService:
     @classmethod
     async def get_dashboard_metrics(cls, month: str = "September", year: int = 2026) -> Dict[str, Any]:
         emp_col = get_collection("employees")
-        payroll_col = get_collection("payrolls")
         adv_col = get_collection("salary_advances")
 
         total_employees = await emp_col.count_documents({"employee_status": "Active"})

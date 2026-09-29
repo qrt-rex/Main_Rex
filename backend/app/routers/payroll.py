@@ -1,12 +1,13 @@
 import logging
+import re
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Response
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from fastapi.responses import HTMLResponse
 from app.services.payroll_service import PayrollService
 from app.services.pdf_service import PDFService
 from app.services.email_service import EmailService
 from app.services.auth_service import get_current_admin
-from app.database import get_collection, fix_id, fix_ids
+from app.database import get_collection, fix_id
 from app.schemas.advanced_payroll import (
     SalaryStructureUpdate,
     SalaryStructureResponse,
@@ -21,13 +22,13 @@ from app.schemas.payroll import (
     SalaryCalculateRequest,
     SalaryCalculationResult,
     SalarySlipCreateRequest,
-    BatchPayrollRunRequest,
     SalarySlipResponse,
     SalarySlipListResponse,
-    PayrollSummaryResponse
+    PayrollSummaryResponse,
 )
 from app.schemas.payroll_adjustment import PayrollAdjustmentRequest, PayrollAdjustmentResponse
 from app.services.log_service import LogService
+from app.services.rbac_service import get_user_permissions
 from app.services import sales_payroll
 from app.utils.validators import MONTH_NAMES, require_month_name
 
@@ -362,16 +363,6 @@ async def legacy_generate_slip(req: SalarySlipCreateRequest, admin: Dict[str, An
     rec = await PayrollService.finalize_payroll(rec["id"], user_email=admin.get("email", "admin"))
     return SalarySlipResponse(**PayrollService.to_legacy_slip_format(rec))
 
-@router.post("/batch-run")
-async def legacy_run_batch_payroll(req: BatchPayrollRunRequest, admin: Dict[str, Any] = Depends(get_current_admin)):
-    bulk_req = BulkPayrollRunRequest(month=req.month, year=req.year, department=req.department, auto_approve=True)
-    result = await PayrollService.run_advanced_bulk_payroll(bulk_req)
-    result["message"] = (
-        f"Batch payroll run completed for {req.month} {req.year}: "
-        f"{result['successful_count']}/{result['total_processed']} processed successfully."
-    )
-    return result
-
 @router.get("/slips", response_model=SalarySlipListResponse)
 async def legacy_get_salary_slips(
     month: Optional[str] = Query(None),
@@ -402,12 +393,19 @@ async def legacy_get_slip_details(slip_id: str, admin: Dict[str, Any] = Depends(
     return SalarySlipResponse(**PayrollService.to_legacy_slip_format(fix_id(doc)))
 
 @router.get("/slip/{slip_id}/printable", response_class=HTMLResponse)
-async def legacy_get_printable_salary_slip(slip_id: str):
+async def legacy_get_printable_salary_slip(slip_id: str, admin: Dict[str, Any] = Depends(get_current_admin)):
+    """The printable payslip: HR / Admin see any; everyone else only their own (someone else's reads as not found)."""
     slip_col = get_collection("salary_slips")
     doc = await slip_col.find_one({"_id": slip_id})
     if not doc:
         payroll_col = get_collection("payrolls")
         doc = await payroll_col.find_one({"_id": slip_id})
+    if doc and "hr.payroll.view" not in await get_user_permissions(admin):
+        email = str(admin.get("email") or "").strip()
+        me = await get_collection("employees").find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}) if email else None
+        mine = {str(me["_id"]), me.get("employee_code")} if me else set()
+        if str(doc.get("employee_id") or "") not in mine and str(doc.get("email") or "").lower() != email.lower():
+            doc = None
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary slip not found.")
     html_content = PDFService.generate_salary_slip_html(doc)

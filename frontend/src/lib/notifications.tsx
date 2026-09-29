@@ -4,11 +4,16 @@ import { useAuth } from '../auth/AuthContext';
 
 export interface NotificationItem {
   id: string;
-  type: 'approval' | 'recruitment' | 'onboarding' | 'broadcast';
+  /** approval: waiting on you to decide · update: the outcome of your own request */
+  type: 'approval' | 'update' | 'recruitment' | 'onboarding' | 'broadcast';
   title: string;
   description: string;
   timestamp: string | null;
   link: string;
+  /** Broadcasts: the message and whether this user still has to acknowledge it. */
+  broadcast_id?: string;
+  needs_ack?: boolean;
+  body?: string;
 }
 
 interface NotificationsValue {

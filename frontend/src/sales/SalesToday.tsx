@@ -59,9 +59,9 @@ export function SalesToday() {
         </span>
       </SectionTitle>
       <div className="grid gap-4 lg:grid-cols-3">
-        <SchemesCard schemes={d.schemes} onChanged={s.reload} />
-        <FlyersPostsCard materials={d.materials} onChanged={s.reload} />
-        <SalesInfoCard materials={d.materials} onChanged={s.reload} />
+        <SchemesCard schemes={d.schemes} onChanged={s.reload} canManage={d.can_manage} />
+        <FlyersPostsCard materials={d.materials} onChanged={s.reload} canManage={d.can_manage} />
+        <SalesInfoCard materials={d.materials} onChanged={s.reload} canManage={d.can_manage} />
       </div>
 
       <SectionTitle>Leads & Team activity</SectionTitle>

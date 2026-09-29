@@ -1,5 +1,4 @@
 import bcrypt
-from typing import Optional
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password securely with bcrypt salt."""

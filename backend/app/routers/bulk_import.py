@@ -14,7 +14,7 @@ from app.schemas.bulk_import import (
     ImportJobSummary,
     TARGET_SCHEMA_REGISTRY
 )
-from app.services.import_parser_service import ImportParserService, UPLOAD_TEMP_DIR
+from app.services.import_parser_service import ImportParserService
 from app.services.import_execution_engine import ImportExecutionEngine
 from app.services.import_alert_worker import ImportAlertWorker
 from app.services.auth_service import get_current_user

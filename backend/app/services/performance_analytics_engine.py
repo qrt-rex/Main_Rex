@@ -1,6 +1,6 @@
 import logging
-from datetime import datetime, timedelta, date
-from typing import Dict, Any, List, Tuple, Optional
+from datetime import timedelta, date
+from typing import List, Tuple, Optional
 import calendar
 
 from app.database import get_collection

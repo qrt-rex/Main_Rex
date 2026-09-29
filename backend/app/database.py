@@ -20,7 +20,7 @@ KNOWN_COLLECTIONS = [
     "attendance_settings", "audit_logs", "bonuses", "broadcast_receipts",
     "broadcasts", "candidates", "clients", "email_logs", "employee_loans",
     "employees", "import_jobs", "interns", "joining_tokens", "leave_balances",
-    "leave_requests", "loan_transactions", "notifications", "onboarding_submissions",
+    "leave_requests", "loan_transactions", "onboarding_submissions",
     "otps", "overtime", "payroll_revisions", "payroll_settings", "payrolls",
     "project_tasks", "projects", "report_jobs", "salary_advances", "salary_slips",
     "salary_structures", "timesheets", "activity_logs", "role_permissions",
@@ -370,10 +370,6 @@ class PostgresDocumentAdapter:
             result = await conn.execute(text(f"SELECT COUNT(*) FROM {self.table} WHERE {where}"), params)
             return result.scalar_one()
 
-    async def create_index(self, *args, **kwargs):
-        pass
-
-
 class DatabaseManager:
     engine: Optional[AsyncEngine] = None
     db: Any = None
@@ -427,10 +423,6 @@ class DatabaseManager:
 
 
 db_manager = DatabaseManager()
-
-
-def get_db():
-    return db_manager.db
 
 
 def get_collection(name: str):

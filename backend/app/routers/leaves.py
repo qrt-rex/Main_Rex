@@ -2,13 +2,9 @@ import re
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query, status
 from typing import Dict, Any, List, Optional
 
-from app.schemas.leave import (
-    LeaveApplicationRequest,
-    LeaveDecisionRequest,
-    LeaveBalance,
-)
+from app.schemas.leave import LeaveApplicationRequest, LeaveDecisionRequest
 from app.services.leave_service import LeaveService, LEVEL_LABEL
-from app.services.rbac_service import get_user_permissions, normalize_role, user_roles
+from app.services.rbac_service import ROLES, get_user_permissions, normalize_role, user_roles
 from app.services.leave_alert_worker import LeaveAlertWorker
 from app.services.auth_service import get_current_user
 from app.database import get_collection, fix_ids
@@ -20,12 +16,25 @@ async def _is_approver(user: Dict[str, Any]) -> bool:
     return "hr.leave.approve" in await get_user_permissions(user)
 
 
-async def _own_employee(user: Dict[str, Any]) -> Dict[str, Any]:
+async def _own_applicant(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Whoever is signed in: their employee record (matched by email), or else the login account itself.
+
+    Every login can request its own leave. Accounts without an employee record (e.g. hr@, admin@) are
+    identified by their email, the same identity broadcasts and attendance fall back to.
+    """
     email = str(user.get("email") or "").strip()
-    emps = await get_collection("employees").find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}).to_list(2) if email else []
-    if not emps:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No employee record is linked to your login email, so leave can't be requested. Ask HR to add it.")
-    return emps[0]
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your account has no email address, so leave can't be requested.")
+    emps = await get_collection("employees").find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}).to_list(2)
+    if emps:
+        return emps[0]
+    role = normalize_role(user.get("role"))
+    return {"employee_code": email.lower(), "full_name": user.get("username") or email, "email": email,
+            "department": next((r["label"] for r in ROLES if r["id"] == role), "General")}
+
+
+def _code(emp: Dict[str, Any]) -> str:
+    return emp.get("employee_code") or emp.get("employee_id") or str(emp["_id"])
 
 
 async def _alert_recipients(leave: Dict[str, Any]) -> Optional[List[str]]:
@@ -58,9 +67,10 @@ async def apply_for_leave(
     return await _submit(payload, background_tasks)
 
 
-async def _submit(payload: LeaveApplicationRequest, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def _submit(payload: LeaveApplicationRequest, background_tasks: BackgroundTasks,
+                  applicant: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
-        res = await LeaveService.apply_leave(payload)
+        res = await LeaveService.apply_leave(payload, applicant=applicant)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
 
@@ -87,9 +97,9 @@ async def apply_for_own_leave(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Request your own leave (sales, staff, HR, admin): routed to HR, or to Admin / Super Admin for HR / Admin staff."""
-    emp = await _own_employee(current_user)
-    payload.employee_id = emp.get("employee_code") or emp.get("employee_id") or str(emp["_id"])
-    return await _submit(payload, background_tasks)
+    emp = await _own_applicant(current_user)
+    payload.employee_id = _code(emp)
+    return await _submit(payload, background_tasks, applicant=emp)
 
 
 @router.get("/pending-dashboard", status_code=status.HTTP_200_OK)
@@ -130,8 +140,7 @@ async def get_employee_leave_balances(
 ):
     # Balances are keyed by employee code; accept a record id too. "me" (and anyone who can't approve leave) gets their own.
     if employee_id == "me" or not await _is_approver(current_user):
-        own = await _own_employee(current_user)
-        employee_id = own.get("employee_code") or own.get("employee_id") or str(own["_id"])
+        employee_id = _code(await _own_applicant(current_user))
     emp = await LeaveService.resolve_employee(employee_id)
     if emp:
         employee_id = emp.get("employee_code") or emp.get("employee_id") or str(emp.get("_id"))

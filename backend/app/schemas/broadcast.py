@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from app.utils.sanitize import sanitize_rich_text
 
@@ -86,15 +86,3 @@ class BroadcastRecipientReceipt(BaseModel):
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-
-class InAppNotification(BaseModel):
-    id: Optional[str] = Field(None, alias="_id")
-    recipient_employee_id: str
-    title: str
-    message_preview: str
-    reference_id: str
-    notification_type: str = "BROADCAST"
-    priority: BroadcastPriority = BroadcastPriority.INFO
-    requires_action: bool = False
-    is_read: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)

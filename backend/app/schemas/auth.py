@@ -32,15 +32,3 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
     otp: str
     new_password: str = Field(min_length=8, max_length=128)
-
-class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
-
-class AdminProfileResponse(BaseModel):
-    id: str
-    username: str
-    email: str
-    role: str
-    is_active: bool
-    last_login: Optional[str] = None

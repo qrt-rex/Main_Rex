@@ -10,7 +10,9 @@ from app.schemas.attendance import (
 from app.services.attendance_service import AttendanceService
 from app.services.attendance_alert_worker import AttendanceAlertWorker
 from app.services.auth_service import get_current_user
-from app.database import get_collection, fix_ids, fix_id
+from app.services.rbac_service import sees_all_attendance
+from app.services.broadcast_service import BroadcastService
+from app.database import get_collection, fix_ids
 
 router = APIRouter(prefix="/api/attendance", tags=["Attendance & Time Tracking"])
 
@@ -44,9 +46,11 @@ async def list_attendance_records(
     limit: int = Query(500, ge=1, le=5000),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List attendance records with filters."""
+    """List attendance records with filters. Only HR, Admin and Super Admin see other people's records."""
     att_col = get_collection("attendance")
     filter_q: Dict[str, Any] = {}
+    if not sees_all_attendance(current_user):
+        employee_id = await BroadcastService.employee_code_for_account(current_user)  # the caller's own code, whatever was asked
     if date_str:
         filter_q["attendance_date"] = date_str
     elif date_from or date_to:  # inclusive range: today, yesterday, this week...

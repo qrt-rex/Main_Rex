@@ -25,13 +25,12 @@ SUPERADMIN = "superadmin"
 
 ROLES: List[Dict[str, str]] = [
     {"id": "superadmin", "label": "Super Admin"},
-    {"id": "admin", "label": "Admin"},
+    {"id": "admin", "label": "Admin / Accounting"},
     {"id": "hr", "label": "HR"},
     {"id": "legal", "label": "Legal"},
-    {"id": "sales", "label": "Sales Person"},
-    {"id": "it", "label": "IT Department"},
-    {"id": "support", "label": "Support"},
-    {"id": "employee", "label": "Employee"},
+    {"id": "sales", "label": "Employee / Sales Person"},
+    {"id": "support", "label": "Operation Team"},
+    {"id": "it", "label": "IT"},
 ]
 ROLE_IDS = {r["id"] for r in ROLES}
 
@@ -132,12 +131,11 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
               "sales.hub.manage"],
     "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage"],
-    "sales": [*_SALES_ALL, "sales.hub.manage", "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
+    "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
            "users.manage", "audit.view"],
     "support": ["support.desk.view", "clients.view", "sales.customers.view", "sales.contacts.view",
                 "hr.broadcasts.view", "documents.submit"],
-    "employee": ["hr.broadcasts.view", "documents.submit", "sales.hub.view"],
 }
 
 # ---------------------------------------------------------------------------
@@ -158,12 +156,10 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/auth/forgot-password"): PUBLIC,
     ("POST", "/api/auth/reset-password"): PUBLIC,
     ("GET", "/api/auth/session-config"): PUBLIC,
-    ("GET", "/api/auth/me"): AUTHENTICATED,
     ("POST", "/api/auth/logout"): AUTHENTICATED,
     ("POST", "/api/auth/session-timeout"): AUTHENTICATED,
     # Public candidate / onboarding portals
     ("POST", "/api/otp/send"): PUBLIC,
-    ("POST", "/api/otp/verify"): PUBLIC,
     ("POST", "/api/candidates"): PUBLIC,
     ("POST", "/api/joining/validate-token"): PUBLIC,
     ("POST", "/api/joining/verify-token-otp"): PUBLIC,
@@ -242,9 +238,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/reports/jobs/{job_id}"): "hr.performance.view",
     # Broadcasts (a user's own in-app feed only needs a session)
     ("GET", "/api/broadcasts"): "hr.broadcasts.view",
-    ("GET", "/api/broadcasts/analytics/{broadcast_id}"): "hr.broadcasts.view",
     ("POST", "/api/broadcasts/publish"): "hr.broadcasts.publish",
-    ("GET", "/api/broadcasts/in-app/my-notifications"): AUTHENTICATED,
     ("POST", "/api/broadcasts/acknowledge/{broadcast_id}"): AUTHENTICATED,
     # Smart bulk import
     ("POST", "/api/bulk-import/preview-and-map"): "hr.import.manage",
@@ -259,7 +253,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/payroll/salary-structures/{employee_id}"): "hr.payroll.view",
     ("GET", "/api/payroll/slips"): "hr.payroll.view",
     ("GET", "/api/payroll/slip/{slip_id}"): "hr.payroll.view",
-    ("GET", "/api/payroll/slip/{slip_id}/printable"): "hr.payroll.view",
+    ("GET", "/api/payroll/slip/{slip_id}/printable"): AUTHENTICATED,  # your own, or anyone's with hr.payroll.view
     ("GET", "/api/payroll/summary"): "hr.payroll.view",
     ("POST", "/api/payroll/calculate-salary"): "hr.payroll.view",
     ("GET", "/api/payroll/sales-preview"): "hr.payroll.view",
@@ -270,7 +264,6 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/payroll/record/{payroll_id}/send-email"): "hr.payroll.process",
     ("POST", "/api/payroll/send-bulk-email"): "hr.payroll.process",
     ("POST", "/api/payroll/generate-slip"): "hr.payroll.process",
-    ("POST", "/api/payroll/batch-run"): "hr.payroll.process",
     ("DELETE", "/api/payroll/slip/{slip_id}"): "hr.payroll.process",
     ("POST", "/api/payroll/adjust-salary"): "hr.payroll.process",
     ("POST", "/api/payroll/record/{payroll_id}/approve"): "hr.payroll.approve",
@@ -307,7 +300,6 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("DELETE", "/api/billing/invoices/{invoice_id}"): "billing.manage",
     ("GET", "/api/billing/invoices/{invoice_id}/pdf"): "billing.view",
     ("GET", "/api/billing/quotations"): "billing.view",
-    ("GET", "/api/billing/quotations/next-number"): "billing.view",
     ("POST", "/api/billing/quotations"): "billing.create",
     ("GET", "/api/billing/quotations/{quotation_id}"): "billing.view",
     ("PUT", "/api/billing/quotations/{quotation_id}"): "billing.create",
@@ -329,11 +321,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/billing/dashboard/metrics"): "billing.view",
     ("GET", "/api/billing/reports/gstr1"): "billing.view",
     ("GET", "/api/billing/reports/aging"): "billing.view",
-    ("GET", "/api/billing/branches"): "billing.view",
     ("GET", "/api/billing/sales-people"): "billing.view",
-    ("GET", "/api/billing/settings"): "billing.view",
-    ("PUT", "/api/billing/settings"): "billing.manage",
-    ("GET", "/api/billing/export/zip"): "billing.view",
     ("GET", "/api/billing/requests"): "billing.view",
     ("POST", "/api/billing/requests"): "billing.view",
     ("GET", "/api/billing/requests/{request_id}"): "billing.view",
@@ -411,8 +399,14 @@ _CACHE_TTL_SECONDS = 30
 _cache: Dict[str, Tuple[float, Set[str]]] = {}
 
 
+# There are exactly seven user types (ROLES). Accounts saved under an older name keep working:
+# "employee" was merged into Employee / Sales Person, "operations" is the Operation Team's id.
+ROLE_ALIASES = {"employee": "sales", "operations": "support"}
+
+
 def normalize_role(role: Optional[str]) -> str:
-    return (role or "").strip().lower()
+    r = (role or "").strip().lower()
+    return ROLE_ALIASES.get(r, r)
 
 
 async def get_role_permissions(role: Optional[str]) -> Set[str]:
@@ -428,9 +422,33 @@ async def get_role_permissions(role: Optional[str]) -> Set[str]:
 
     doc = await get_collection("role_permissions").find_one({"role": role})
     granted = doc["permissions"] if doc else DEFAULT_ROLE_PERMISSIONS.get(role, [])
-    perms = {p for p in granted if p in _ALL_SET}
+    perms = {p for p in granted if p in _ALL_SET and not reserved_blocked(p, [role])}
     _cache[role] = (time.monotonic() + _CACHE_TTL_SECONDS, perms)
     return perms
+
+
+# Rules tied to a role that no setting can change: not the role matrix, not a per-user Allow.
+# A reserved permission only ever takes effect for someone who holds one of these roles
+# (their own role, or an additional role a Super Admin gave them).
+ROLE_RESERVED_PERMISSIONS: Dict[str, Set[str]] = {
+    # Adding and editing schemes, flyers/posts, sales information and leads: sales staff only view them.
+    "sales.hub.manage": {"superadmin", "admin", "legal"},
+    # Everyone's salaries, payslips and the salary register. Staff still open their own payslip.
+    "hr.payroll.view": {"superadmin", "admin", "hr"},
+    "hr.payroll.process": {"superadmin", "admin", "hr"},
+    "hr.payroll.approve": {"superadmin", "admin", "hr"},
+}
+# Everyone else sees only their own attendance, whatever permissions they hold.
+FULL_ATTENDANCE_ROLES = {"superadmin", "admin", "hr"}
+
+
+def reserved_blocked(permission: str, roles) -> bool:
+    allowed = ROLE_RESERVED_PERMISSIONS.get(permission)
+    return allowed is not None and not (set(roles) & allowed)
+
+
+def sees_all_attendance(user: Optional[Dict[str, Any]]) -> bool:
+    return bool(set(user_roles(user)) & FULL_ATTENDANCE_ROLES)
 
 
 def user_roles(user: Optional[Dict[str, Any]]) -> List[str]:
@@ -461,7 +479,7 @@ async def get_user_permissions(user: Optional[Dict[str, Any]]) -> Set[str]:
         perms |= await get_role_permissions(r)
     perms |= {p for p in ((user or {}).get("grants") or []) if p in _ALL_SET}
     perms -= set((user or {}).get("denies") or [])
-    return perms
+    return {p for p in perms if not reserved_blocked(p, roles)}
 
 
 async def get_role_matrix() -> Dict[str, List[str]]:
@@ -476,6 +494,9 @@ async def set_role_permission(role: str, permission: str, granted: bool, actor: 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown role.")
     if permission not in _ALL_SET:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown permission.")
+    if granted and reserved_blocked(permission, [role]):
+        who = ", ".join(next(r["label"] for r in ROLES if r["id"] == x) for x in sorted(ROLE_RESERVED_PERMISSIONS[permission]))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This permission is reserved for {who}; it can't be given to this role.")
 
     current = set(await get_role_permissions(role))
     if granted:
@@ -496,6 +517,7 @@ async def set_role_permission(role: str, permission: str, granted: bool, actor: 
 def catalog_payload() -> Dict[str, Any]:
     return {
         "roles": ROLES,
+        "reserved": {p: sorted(r) for p, r in ROLE_RESERVED_PERMISSIONS.items()},
         "groups": [
             {"id": gid, "label": label, "permissions": [{"key": k, "label": l} for k, l in perms]}
             for gid, label, perms in CATALOG

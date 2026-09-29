@@ -2,18 +2,17 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, status, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, status
 from fastapi.responses import FileResponse
 from typing import Dict, Any, Optional, Tuple
 
 from app.schemas.analytics_reports import (
     DateRangePreset,
-    ExportFormat,
     ReportScope,
     IndividualPerformanceReport,
     CompanyWidePerformanceReport,
     ReportGenerationJob,
-    ReportExportRequest
+    ReportExportRequest,
 )
 from app.services.performance_analytics_engine import PerformanceAnalyticsEngine
 from app.services.report_export_service import ReportExportService, OUTPUT_DIR, MEDIA_TYPES

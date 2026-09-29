@@ -28,8 +28,8 @@ function Balances() {
   useEffect(() => {
     if (!emp && employees[0]) setEmp(employees[0].employee_code);
   }, [employees, emp]);
-  // Without the employee directory (e.g. sales) the server returns your own balances.
-  const ref = available ? emp : 'me';
+  // Without the employee directory (e.g. sales), or before an employee is picked, show your own balances.
+  const ref = available && emp ? emp : 'me';
   const bal = useApi(() => leaveBalances(ref), [ref], !!ref);
   const b = bal.data?.balances;
   const tiles: [string, number | undefined, string][] = [

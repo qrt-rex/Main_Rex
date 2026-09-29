@@ -1,7 +1,5 @@
 import os
 import re
-import io
-import uuid
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
@@ -12,12 +10,7 @@ from app.database import get_collection
 from app.schemas.leave import LeaveBalance
 from app.services.employee_service import EmployeeService
 from app.utils.validators import optional_ifsc, validate_mobile
-from app.schemas.bulk_import import (
-    ImportTargetEntity,
-    ImportJobStatus,
-    ImportJobSummary,
-    TARGET_SCHEMA_REGISTRY
-)
+from app.schemas.bulk_import import ImportTargetEntity, ImportJobStatus, TARGET_SCHEMA_REGISTRY
 
 logger = logging.getLogger("rexera.bulk_import.engine")
 

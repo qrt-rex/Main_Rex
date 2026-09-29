@@ -24,7 +24,7 @@ from app.database import get_collection
 from app.schemas.attendance import PunchInRequest, PunchOutRequest
 from app.services.attendance_service import AttendanceService
 from app.services.auth_service import get_current_admin
-from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role
+from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role, sees_all_attendance
 
 router = APIRouter(prefix="/api/sales-hub", tags=["Sales Workspace"])
 logger = logging.getLogger("rexera.sales_hub")
@@ -79,7 +79,7 @@ async def _sales_team() -> List[Dict[str, Any]]:
     users = [u for u in await get_collection("admins").find({}).to_list(2000) if u.get("is_active", True)]
     lead_owners = {(l.get("assigned_to") or {}).get("user_id") for l in await get_collection("sales_leads").find({}).to_list(20000)}
     session_users = {s.get("user_id") for s in await get_collection("sales_day_sessions").find({"date": _today()}).to_list(5000)}
-    team = [u for u in users if has_role(u, "sales") or has_role(u, "employee") or str(u["_id"]) in lead_owners | session_users]
+    team = [u for u in users if has_role(u, "sales") or str(u["_id"]) in lead_owners | session_users]
     return sorted(team, key=lambda u: (u.get("username") or u.get("email", "")).lower())
 
 
@@ -105,8 +105,8 @@ async def summary(admin: Dict[str, Any] = Depends(get_current_admin)):
         "leads": [_id(l) for l in leads],
         "schemes": [_id(s) for s in schemes],
         "materials": [_material_view(m) for m in materials],
-        "progress": await _progress(today, today),
-        "attendance": await _attendance(today),
+        "progress": await _progress(today, today, admin),
+        "attendance": await _attendance(today, admin),
     }
 
 
@@ -171,11 +171,15 @@ def _hours(s: Dict[str, Any]) -> float:
         return 0.0
 
 
-async def _attendance(day: str) -> List[Dict[str, Any]]:
+async def _attendance(day: str, viewer: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The day board. Only HR, Admin and Super Admin see everyone; anyone else sees their own row."""
     sessions = {s.get("user_id"): s for s in await get_collection("sales_day_sessions").find({"date": day}).to_list(5000)}
+    everyone, me = sees_all_attendance(viewer), _me(viewer)["user_id"]
     board = []
     for u in await _sales_team():
         uid = str(u["_id"])
+        if not everyone and uid != me:
+            continue
         s = sessions.get(uid)
         board.append({
             "user_id": uid, "name": u.get("username") or u.get("email", ""), "email": u.get("email", ""),
@@ -188,27 +192,29 @@ async def _attendance(day: str) -> List[Dict[str, Any]]:
 
 
 @router.get("/attendance")
-async def attendance(day: Optional[str] = Query(None, alias="date")):
+async def attendance(day: Optional[str] = Query(None, alias="date"), admin: Dict[str, Any] = Depends(get_current_admin)):
     d = day or _today()
     try:
         date.fromisoformat(d)
     except ValueError:
         raise HTTPException(status_code=422, detail="Date must be YYYY-MM-DD.")
-    return {"date": d, "board": await _attendance(d)}
+    return {"date": d, "board": await _attendance(d, admin)}
 
 
 # ---------------------------------------------------------------------------
 # Progress
 # ---------------------------------------------------------------------------
-async def _progress(date_from: str, date_to: str) -> List[Dict[str, Any]]:
+async def _progress(date_from: str, date_to: str, viewer: Dict[str, Any]) -> List[Dict[str, Any]]:
     leads = await get_collection("sales_leads").find({}).to_list(20000)
     calls = [c for c in await get_collection("sales_calls").find({}).to_list(100000)
              if date_from <= str(c.get("local_date", "")) <= date_to]
     today = _today()
     sessions = {s.get("user_id"): s for s in await get_collection("sales_day_sessions").find({"date": today}).to_list(5000)}
     rows = []
+    everyone, me = sees_all_attendance(viewer), _me(viewer)["user_id"]
     for u in await _sales_team():
         uid = str(u["_id"])
+        own_day = everyone or uid == me  # other people's day status is attendance: not shared
         mine = [l for l in leads if (l.get("assigned_to") or {}).get("user_id") == uid]
         my_calls = [c for c in calls if c.get("user_id") == uid]
         converted = sum(1 for c in my_calls if c.get("outcome") == "CONVERTED")
@@ -222,14 +228,15 @@ async def _progress(date_from: str, date_to: str) -> List[Dict[str, Any]]:
             "converted": converted,
             "converted_total": sum(1 for l in mine if l.get("status") == "CONVERTED"),
             "follow_ups_due": sum(1 for l in mine if l.get("status") in OPEN_STATUSES and l.get("follow_up_date") and l["follow_up_date"] <= today),
-            "day_status": "NOT_STARTED" if uid not in sessions else ("WORKING" if not sessions[uid].get("ended_at") else "DAY_ENDED"),
-            "hours_today": _hours(sessions[uid]) if uid in sessions else 0.0,
+            "day_status": None if not own_day else "NOT_STARTED" if uid not in sessions else ("WORKING" if not sessions[uid].get("ended_at") else "DAY_ENDED"),
+            "hours_today": _hours(sessions[uid]) if own_day and uid in sessions else 0.0,
         })
     return sorted(rows, key=lambda r: (-r["converted"], -r["calls"], r["name"].lower()))
 
 
 @router.get("/progress")
-async def progress(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+async def progress(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to"),
+                   admin: Dict[str, Any] = Depends(get_current_admin)):
     today = _today()
     f, t = date_from or today, date_to or today
     try:
@@ -238,7 +245,7 @@ async def progress(date_from: Optional[str] = Query(None, alias="from"), date_to
         raise HTTPException(status_code=422, detail="Dates must be YYYY-MM-DD.")
     if t < f:
         raise HTTPException(status_code=422, detail="The end date is before the start date.")
-    return {"from": f, "to": t, "rows": await _progress(f, t)}
+    return {"from": f, "to": t, "rows": await _progress(f, t, admin)}
 
 
 # ---------------------------------------------------------------------------

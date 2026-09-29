@@ -1,261 +1,201 @@
 # Rex CRM
 
-React 19 + TypeScript + Vite frontend and a FastAPI + PostgreSQL backend for the Rex CRM: HR,
-payroll, sales, legal, billing and the role-based dashboards behind a single sign-in.
+Rexera's internal CRM: HR, payroll, attendance and leave, sales, billing and invoicing, legal, and
+administration, behind one sign-in. There is one backend (FastAPI + PostgreSQL) and one web app
+(React). Roles never mean separate servers: they only decide what each signed-in person may see and do.
 
 ```
-frontend/   React app (Vite). Modules live in src/hr, src/billing, src/dashboards ...
-backend/    FastAPI API (app/routers, app/services, app/schemas) and its tests (tests/)
-docs/       QA report and the original Rexera-HR readme
-```
-
----
-
-## Running the servers
-
-Two processes are needed: the API first, then the frontend. Each command keeps running in
-the terminal that started it.
-
-### 1. Backend API
-
-Install once: `cd backend && pip install -r requirements.txt`, then copy `.env.example` to `.env`.
-
-Production schema (`hr_rexera`, from `backend/.env`), port 8000:
-
-```bash
-cd backend && python -m uvicorn app.main:app --port 8000
-```
-
-Isolated development schema (`hr_rexera_dev`), port 8010. It writes nothing to production
-data, seeds sample records, and simulates outbound email so the 6-digit sign-in code is
-shown on screen instead of being emailed:
-
-```powershell
-$env:DB_SCHEMA='hr_rexera_dev'; $env:SEED_DUMMY_DATA='true'; $env:EMAIL_DEV_MODE='True'; cd backend; python -m uvicorn app.main:app --port 8010
-```
-
-Check it is up at <http://127.0.0.1:8010/api/health> — the response names the schema it
-connected to.
-
-### 2. Frontend
-
-```bash
-cd frontend && npm install && npm run dev
-```
-
-Vite serves <http://localhost:5173> by default. To pin the port and point at the dev API:
-
-```powershell
-$env:VITE_API_BASE_URL='http://localhost:8010'; cd frontend; npx vite --port 5180 --strictPort
-```
-
-`VITE_API_BASE_URL` (in `frontend/.env` or `.env.local`) decides which API the app talks to
-(8000 = production data, 8010 = dev schema). Restart Vite after changing it — the value is
-read at startup.
-
-### Stopping the servers
-
-Press `Ctrl+C` in the terminal running each one. If a server was started in the background
-or its terminal is gone, stop it by port:
-
-```powershell
-Get-NetTCPConnection -LocalPort 5180 -State Listen | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
-```
-
-Use `8010` (or `8000`, `5173`) for the other servers. To confirm nothing is left listening:
-
-```powershell
-Get-NetTCPConnection -LocalPort 8000,8010,5173,5180 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, OwningProcess
+backend/                FastAPI API (one process serves every module)
+  app/main.py           app, routers, serves the built web app
+  app/routers/          one file per module (HTTP endpoints)
+  app/services/         business logic (payroll, leave, attendance, billing rules, notifications…)
+  app/schemas/          request / response models and validation
+  app/utils/            shared helpers (security, validators, sanitising, number-to-words)
+  app/config.py         settings, read from backend/.env
+  app/database.py       PostgreSQL document store (JSONB tables)
+  app/seed.py           first-run accounts and reference data
+  logo.png, stamp.png   images used on payslips
+frontend/               React 19 + TypeScript + Vite + Tailwind
+  src/App.tsx           routes
+  src/modules/registry.ts   every page, its path and the permission that shows it
+  src/auth/ src/hr/ src/billing/ src/sales/ src/dashboards/ src/pages/ src/components/ src/lib/
+QA_TESTING.md           latest QA report
 ```
 
 ---
 
-## Where to find the dashboards
+## Run it
 
-Sign in once at **`/login`** — there is no separate login per role. After the password and
-the 6-digit code, the CRM reads your role and sends you to your own dashboard.
+### Backend
 
-| Role | Dashboard URL | What it shows |
+```bash
+cd backend
+pip install -r requirements.txt
+copy .env.example .env        # then fill it in (see Configuration)
+python -m uvicorn app.main:app --port 8000
+```
+
+Check <http://127.0.0.1:8000/api/health>: it reports the database schema it connected to.
+API documentation is at `/docs` whenever `APP_ENV` is not `production`.
+
+### Web app: two ways
+
+**One process (simplest).** Build the web app once; the backend then serves it on its own port:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+Open <http://127.0.0.1:8000>. Rebuild after frontend changes. HTML is sent with `no-cache`, so a
+refresh always shows the latest build.
+
+**Development server (while changing the frontend).** This gives hot reload on port 5173 and talks
+to the API on `http://localhost:8000`:
+
+```bash
+cd frontend
+npm run dev
+```
+
+To point it at another API, set `VITE_API_BASE_URL` in `frontend/.env.local` and restart Vite.
+
+### Other commands
+
+```bash
+cd frontend && npx tsc -b      # type-check
+cd frontend && npm run lint    # oxlint
+cd backend && python -m pyflakes app
+```
+
+---
+
+## Configuration (`backend/.env`)
+
+`backend/.env.example` lists every setting. The important ones:
+
+| Setting | Purpose |
+|---|---|
+| `POSTGRES_URI` | PostgreSQL connection (`postgresql+asyncpg://…`). `DB_SCHEMA` picks the schema (default `hr_rexera`). |
+| `JWT_SECRET_KEY` | Signs sessions. **Set a long random value in production.** |
+| `SMTP_*` / `BREVO_API_KEY` | Outgoing email: sign-in codes, leave decisions, payslips, broadcasts. |
+| `EMAIL_DEV_MODE` | `True` shows sign-in codes on screen instead of emailing them. **Use `False` in production.** |
+| `COMPANY_WEBSITE` | Address the app is served from; joining emails link to `{COMPANY_WEBSITE}/joining`. |
+| `CORS_ORIGINS` | Allowed browser origins, e.g. `["*"]` or `["http://localhost:5173"]`. |
+| `DEFAULT_ADMIN_*` | The Super Admin account created on first start. |
+
+---
+
+## User types and access
+
+There are seven user types:
+
+| User type | id | Lands on |
 |---|---|---|
-| Super Admin, Admin | `/dashboard/admin` | Workforce, payroll, pipeline, users, access, activity |
-| IT Department | `/dashboard/it` | Infrastructure, database, security, deployment, monitoring, backup, user logs |
-| Sales Person | `/dashboard/sales` | Clients, active work, delivery progress, sales modules |
-| Support | `/dashboard/support` | Open client requests, pending work, clients, announcements |
-| Employee | `/dashboard/employee` | Own profile, tasks, leave, payslip, company updates |
-| HR, Legal | `/dashboard/hr`, `/dashboard/legal` | Permission-driven workspace for that role |
+| Super Admin | `superadmin` | `/dashboard/admin` (may open any dashboard) |
+| Admin / Accounting | `admin` | `/dashboard/admin` |
+| HR | `hr` | `/dashboard/hr` |
+| Legal | `legal` | `/dashboard/legal` |
+| Employee / Sales Person | `sales` | `/dashboard/sales` |
+| Operation Team | `support` | `/dashboard/support` |
+| IT | `it` | `/dashboard/it` |
 
-`/dashboard` always redirects to the dashboard your role owns. Opening another role's URL
-sends you back to your own (a Super Admin may open any of them), and the API enforces the
-same permissions on the data itself.
+Accounts saved under the older name `employee` are read as Employee / Sales Person.
 
-### Related screens
-
-| Screen | URL |
-|---|---|
-| HR module overview | `/hr` |
-| Attendance | `/hr/attendance` |
-| Leave | `/hr/leave` |
-| Payslips (generate / register) | `/hr/payslips` |
-| Billing & Invoicing | `/billing` |
-| Users and accounts | `/admin/users` |
-| Roles and permissions | `/admin/permissions` |
-| Activity log | `/admin/activity` |
-| API documentation | `http://127.0.0.1:8010/docs` |
-
----
-
-## Roles and permissions
-
-Roles and permissions live in `backend/app/services/rbac_service.py` (`ROLES`, `CATALOG`,
-`DEFAULT_ROLE_PERMISSIONS`, `ROUTE_RULES`). A Super Admin can change any role's permissions
-at **`/admin/permissions`** without a code change; it takes effect within 30 seconds.
-Saved role settings override the code defaults, so after a default changes in code, check
-the role in that screen too.
-
-### One backend for everything
-
-There is a single API process (`backend/`, one `uvicorn app.main:app`). HR, payroll, sales,
-legal, billing, users and roles are all routers of that one app, and the React frontend
-talks only to it. Roles never mean separate servers: they only decide what each signed-in
-account may see and do. (Ports 8000 and 8010 are the same backend pointed at production or
-the dev schema, not two services.)
-
-### Access for one person (Users > Manage access)
-
-Besides changing a whole role, a Super Admin (or anyone with `permissions.manage`) can shape
-one account at **`/admin/users`** > row menu > **Manage access**:
-
-- **Additional roles** — the person keeps their own role and also gets everything the ticked
-  roles can do. Example: an Employee given *Sales* and *Admin* gets employee access, sales
-  access and admin access together.
-- **Feature access** — for any single feature choose *Inherit* (follow their roles), *Allow*
-  (add it) or *Deny* (remove it even if a role has it). Deny always wins.
-
-Effective access = all of the person's roles, plus *Allow*, minus *Deny*. It is stored on the
-account (`extra_roles`, `grants`, `denies`), enforced by the server on every request, and takes
-effect on their next request. It is written to the activity log. Super Admin accounts cannot
-be edited, nobody can change their own access, and an editor who is not a Super Admin can only
-hand out access they hold themselves. The dashboard stays the one for the person's own role;
-they may also open the dashboards of their additional roles (e.g. `/dashboard/sales`).
-Business rules that used to look at the account's single role (sales person on invoices,
-sales incentive, leave routing) now consider all of their roles; leave goes to the most
-senior approver among them.
-
-API: `GET/PUT /api/rbac/users/{id}/access`; `GET /api/rbac/me` returns the combined permissions.
-
-An entity a role has no permission for is not rendered at all — no locked or dimmed cards.
-Unauthorised URLs show the 404 page, and the API refuses the underlying request
-independently of the frontend. Every API route needs a rule in `ROUTE_RULES`; a route
-without one is denied.
+- **Roles & permissions** (`/admin/permissions`): a Super Admin decides what each user type can do.
+  Changes apply within 30 seconds and are enforced by the server on every request.
+- **One person's access** (`/admin/users` → row menu → *Manage access*):
+  - *Additional roles*: the person also gets everything those roles can do.
+  - *Allow* adds a single feature; *Deny* removes one.
+  - Effective access is all roles, plus Allow, minus Deny.
+  - Nobody can change their own access, Super Admins can't be edited, and non-Super Admins can only
+    give access they hold themselves.
+- **Fixed rules**: no setting can change these, not the role matrix, a per-person Allow, or an old
+  saved setting:
+  - **Schemes, flyers/posts, sales information and lead management** are for Admin / Accounting,
+    Legal and Super Admin. Employees / Sales Persons view them and are notified when new ones appear.
+  - **Salaries** (payroll register, all payslips, running and approving payroll) are for HR,
+    Admin / Accounting and Super Admin. Everyone can open **their own** payslip from their dashboard.
+  - **Attendance is private**: only HR, Admin / Accounting and Super Admin see other people's
+    attendance; everyone else sees only their own.
+- A page a person has no access to does not appear anywhere, and opening its address shows "not
+  found". The API refuses the underlying requests independently of the web app. Every API route has
+  an access rule in `backend/app/services/rbac_service.py`; a route without one is refused.
 
 ---
 
-## Billing & Invoicing (`/billing`)
+## Modules
 
-Code: `backend/app/routers/billing.py`, `frontend/src/billing/`.
+| Module | Where | Highlights |
+|---|---|---|
+| Dashboards | `/dashboard` | One per user type; pending approvals, own leave, own payslip, company updates |
+| Notifications | the bell, `/notifications` | Requests waiting on you, outcomes of your requests, broadcasts with **Acknowledge**, new schemes/material/leads |
+| Employees & interns | `/hr/employees`, `/hr/interns` | Directory, profiles, bulk import |
+| Recruitment | `/hr/recruitment` | Candidate pipeline, joining tokens |
+| Attendance | `/hr/attendance` | Today / Yesterday / This week / This month filters, counts per status and per employee |
+| Leave | `/hr/leave` | *Request my leave*; balances; approvals routed by role (below) |
+| Payroll & payslips | `/hr/payroll`, `/hr/payslips` | Calculation, approval, locking, bank export, payslips, sales incentive |
+| Broadcasts | `/hr/broadcasts` | Company announcements, optional acknowledgement with live counts |
+| Productivity & performance | `/hr/productivity`, `/hr/performance` | Tasks, timesheets, blockers, scorecards |
+| Sales workspace | `/sales/hub`, sales dashboard | Leads and dialer, Start / End Day, schemes, flyers/posts, sales information, team progress |
+| Billing & invoicing | `/billing` | Tax and proforma invoices, quotations, requests, clients, payments, GSTR-1, reports, documents |
+| Legal | `/legal` | Client records, assignments, approvals, client document forms |
+| Administration | `/admin/users`, `/admin/permissions`, `/admin/activity`, `/admin/automations` | Accounts, access, activity log, scheduled automations |
+| Public pages | `/apply`, `/joining` | Candidate application and new-joiner onboarding, no sign-in |
 
-| Tab | What it does |
+### Leave approval
+
+Anyone signed in can request their own leave. If they have no employee record, their login is used.
+
+| Who asks | Who approves |
 |---|---|
-| Invoices | Search, filter, PDF, record payment, delete, **Export CSV** |
-| Create Invoice | GST tax invoices and proforma invoices, numbered per branch and financial year |
-| Requests | A billing user asks for an invoice; a manager approves (opens Create Invoice pre-filled) or rejects |
-| Quotations | Draft, send, convert to a tax invoice |
-| Clients / Payments | Client directory; payment ledger with **Remove payment** (puts the amount back on the balance) |
-| GSTR & Reports | GSTR-1 summary, ageing, **monthly summary** and per-month **GST register CSV** |
-| Documents | Shared rate cards, brochures and templates (5 MB each; always downloaded, never rendered inline) |
+| Employee / Sales Person, Legal, Operation Team, IT | HR (Admin / Accounting or Super Admin may also decide) |
+| HR | Admin / Accounting or Super Admin |
+| Admin / Accounting | Super Admin |
 
-**Who can issue what.** Anyone with `billing.create` (Sales, HR, Admin) can create proforma
-invoices and quotations. **Tax invoices are HR only**: the `billing.tax_invoice` permission
-is required to create or edit one and to convert a quotation or approve a request into one.
-Super Admin has every permission. Payments, clients, settings and deletes need `billing.manage`.
+Nobody decides their own request. Approved leave is marked on attendance and used by payroll.
 
-**Sales person on an invoice.** Create Invoice has a *Sales Person* field. Payments received
-on that invoice count as that person's collection for the incentive below. A sales user's
-own invoice defaults to themselves; only a billing manager can change it afterwards.
+### Attendance and payroll
 
----
-
-## Attendance (`/hr/attendance`)
-
-- **Start Day / End Day** in the Sales workspace is the attendance punch-in / punch-out
-  (`backend/app/routers/sales_hub.py`). The employee record is matched by login email. Field
-  staff skip the office GPS/IP check. The shift rules in Attendance settings decide the
-  status: on time = Present, after the grace time = Late, after the late cutoff or logging
-  out before the early-logout cutoff = Half Day.
-- **Filters:** Today, Yesterday, This week (Monday to today), This month, a single date, or
-  All time, plus an employee filter. The API takes `date_from` / `date_to` (inclusive);
-  `date_str` and `month` still work.
-- **Counts:** the page shows how many Present, Late, Half day, Absent and On leave records
-  fall in the range, and for multi-day ranges a *Days counted per employee* table with hours.
-
-## Leave and approval routing (`/hr/leave`)
-
-Anyone can **Request my leave** (it uses the employee record with the same email as their
-login). Who approves is decided by the applicant's role:
-
-| Applicant | Approved by |
-|---|---|
-| Sales, employees and other staff | HR (an Admin or Super Admin may also decide) |
-| HR | Admin or Super Admin |
-| Admin | Super Admin |
-
-Nobody can decide their own request (a Super Admin excepted). Approvers see only the
-requests they may decide in *Pending approval*; everyone else sees only their own history
-and balances. New requests email HR, or every Admin / Super Admin for HR-level leave.
-HR can still file leave on behalf of an employee with *Apply for an employee*; routing then
-follows that employee's role. Approved leave becomes `ON_LEAVE` attendance and feeds payroll.
-
-## Payslips, attendance and sales incentive
-
-Code: `backend/app/services/payroll_service.py`, `backend/app/services/sales_payroll.py`.
-
-**Attendance in payroll.** When a payslip is calculated without attendance typed in, the
-month is built from the Start Day / End Day punches and approved leave:
-full day = paid; half day (including a day started but never ended) = half a day's
-deduction; a working day with no punch, no leave = absent; Sundays are paid weekly offs;
-future days are not penalised. Staff with no punches and no sales account keep the old
-full-month default. Attendance typed into the request always wins.
-
-**Sales collection incentive.** For sales accounts the payslip adds a *Sales Incentive*
-from client payments received in the month on invoices that name them as sales person.
-"Monthly salary" is the standard gross of the salary structure.
+- **Start Day / End Day** in the Sales workspace records the punch in and punch out. The shift rules
+  decide the status:
+  - on time: Present
+  - after the grace time: Late
+  - very late, or logging out before the early-logout cutoff: Half Day
+- **When a payslip is calculated**, the month is built from these punches and approved leave:
+  - A day started but not ended counts as a half day.
+  - A working day with no punch and no leave counts as absent.
+  - Sundays are paid days off.
+- **Sales collection incentive**, from payments received on invoices that name the person as sales
+  person. Salary = monthly standard gross.
 
 | Collection in the month | Incentive |
 |---|---|
-| Below salary x3 | None |
-| Salary x3 up to salary x4 | 5% daily and weekly: a day with ₹10,000 or more collected pays 5% of that day; a week (Mon–Sun) with ₹50,000 or more pays 5% of the week's money not already paid as daily |
-| Salary x4 or more | Monthly slab % of the whole month's collection **instead of** daily/weekly |
+| Below salary ×3 | None |
+| Salary ×3 up to ×4 | 5 % of each day with ₹10,000 or more collected, plus 5 % of each Mon–Sun week with ₹50,000 or more (money already paid daily is not paid again) |
+| Salary ×4 or more | Monthly slab on the whole month's collection instead: under ₹2L 20 %, ₹2–3L 25 %, ₹3–4L 27.5 %, ₹4–5L 30 %, ₹5–6L 32.5 %, ₹6–7L 35 %, ₹7–8L 37.5 %, ₹8L+ 40 % |
 
-Monthly slabs: under ₹2L 20%, ₹2–3L 25%, ₹3–4L 27.5%, ₹4–5L 30%, ₹5–6L 32.5%,
-₹6–7L 35%, ₹7–8L 37.5%, ₹8L and above 40%.
+### Billing rules
 
-The payslip form shows a *Sales attendance & incentive* card before you generate. HR can
-override the incentive by typing an amount in the payroll request. `GET
-/api/payroll/sales-preview` returns the same figures.
+- **Tax invoices** are issued by HR (and Super Admin) by default (`billing.tax_invoice`).
+- **Proforma invoices and quotations** can be created by anyone with billing create access
+  (Employee / Sales Person, HR, Admin).
+- **Payments, clients, deletes and approving requests** need billing manage access.
+- **GST**: Gujarat supplies get CGST + SGST; other states get IGST. Each line is taxed at its own rate.
+- **Numbering**: invoice numbers run per branch and financial year.
 
 ---
 
-## Tests
+## Quality
 
-```bash
-cd backend && python -m pytest -q
-```
+See **[QA_TESTING.md](QA_TESTING.md)** for the latest QA cycle. It covers:
 
-Two tests fail on the existing code and are unrelated to the features above:
-`test_attendance_leave.py::test_reject_and_approved_leave_shows_in_attendance` (expects the
-username `admin`, the seeded one is `superadmin`) and `test_sales_hub.py::test_sales_person_flow`
-(Sales is expected to be unable to manage schemes but holds `sales.hub.manage` by default).
+- the 300-case backend suite
+- an access-control sweep of every API route for every user type
+- a screen sweep of every page for every user type
+- static analysis
+- defects found and fixed
+- open recommendations
 
-## Other commands
-
-Type-check and lint the frontend:
-
-```bash
-cd frontend && npx tsc -b && npx oxlint src
-```
-
-Production build (writes to `frontend/dist/`):
-
-```bash
-cd frontend && npm run build
-```
+The automated test suite is not kept in this repository; the QA report says where a copy is archived.

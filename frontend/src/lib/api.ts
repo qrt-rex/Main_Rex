@@ -1,7 +1,9 @@
 // Single client for the CRM backend (the integrated Rexera-HR FastAPI service).
 // Authorization is enforced server-side; the UI's permission checks are only for
 // what to render.
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+// Dev server (npm run dev): the API on port 8000. A production build is served by the backend itself,
+// so it calls its own origin. VITE_API_BASE_URL overrides both.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 const TOKEN_KEY = 'rex-crm-token';
 

@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ExternalLink, Eye, KeyRound, MoreHorizontal, RefreshCw, Trash2, UserPlus } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
-import { API_BASE } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/useApi';
 import { date } from '../../lib/format';
 import {
@@ -229,8 +228,8 @@ export function Recruitment() {
         breadcrumbs={[{ label: 'HR' }, { label: 'Recruitment' }]}
         actions={<>
           <Dropdown label="Public portals" width="w-60" triggerClassName="h-9 gap-1.5 border border-border bg-surface px-3 text-sm font-medium text-text shadow-[var(--shadow-card)] hover:bg-surface-secondary" trigger={<><ExternalLink size={15} /> Portals</>}>
-            <DropdownItem icon={<ExternalLink size={15} />} onClick={() => window.open(`${API_BASE}/index.html`, '_blank', 'noopener')}>Candidate application form</DropdownItem>
-            <DropdownItem icon={<ExternalLink size={15} />} onClick={() => window.open(`${API_BASE}/joining-login.html`, '_blank', 'noopener')}>Onboarding portal</DropdownItem>
+            <DropdownItem icon={<ExternalLink size={15} />} onClick={() => window.open('/apply', '_blank', 'noopener')}>Candidate application form</DropdownItem>
+            <DropdownItem icon={<ExternalLink size={15} />} onClick={() => window.open('/joining', '_blank', 'noopener')}>Onboarding portal</DropdownItem>
           </Dropdown>
           {can('hr.recruitment.manage') && (
             <ImportButton

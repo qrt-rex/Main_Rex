@@ -69,16 +69,6 @@ class SalarySlipCreateRequest(BaseModel):
             raise ValueError("Loss-of-pay days cannot exceed the working days.")
         return self
 
-class BatchPayrollRunRequest(BaseModel):
-    month: str
-    year: int = Field(..., ge=2000, le=2100)
-    department: Optional[str] = None  # None for all departments
-
-    @field_validator("month")
-    @classmethod
-    def _month(cls, v):
-        return require_month_name(v)
-
 class SalarySlipResponse(BaseModel):
     id: str
     slip_number: str

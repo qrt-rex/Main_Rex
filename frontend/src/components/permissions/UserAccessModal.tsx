@@ -9,7 +9,7 @@ import { Skeleton } from '../common/Skeleton';
 import { useToast } from '../common/ToastContext';
 import type { CatalogGroup, RoleDef } from './PermissionMatrix';
 
-interface Catalog { roles: RoleDef[]; groups: CatalogGroup[] }
+interface Catalog { roles: RoleDef[]; groups: CatalogGroup[]; reserved?: Record<string, string[]> }
 interface Access { user: { id: string; username: string; email: string; role: string }; extra_roles: string[]; grants: string[]; denies: string[] }
 type Choice = 'inherit' | 'allow' | 'deny';
 
@@ -105,6 +105,8 @@ export function UserAccessModal({ userId, onClose, onSaved }: { userId: string; 
                   <ul className="divide-y divide-border">
                     {g.permissions.map((p) => {
                       const via = fromRoles(p.key);
+                      const only = catalog.data?.reserved?.[p.key];
+                      const barred = !!only && !heldRoles.some((r) => only.includes(r));
                       const on = effective(p.key);
                       return (
                         <li key={p.key} className="flex flex-wrap items-center gap-3 py-2">
@@ -116,7 +118,7 @@ export function UserAccessModal({ userId, onClose, onSaved }: { userId: string; 
                           <select aria-label={`${p.label}: inherit, allow or deny`} value={current[p.key] ?? 'inherit'} onChange={(e) => setChoice(p.key, e.target.value as Choice)}
                             className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text focus:border-primary focus:outline-none">
                             <option value="inherit">Inherit</option>
-                            <option value="allow">Allow</option>
+                            <option value="allow" disabled={barred}>{barred ? `Allow (only ${only!.map(roleLabel).join(', ')})` : 'Allow'}</option>
                             <option value="deny">Deny</option>
                           </select>
                         </li>

@@ -2,16 +2,14 @@ import re
 import uuid
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
-from app.database import get_collection, fix_id, fix_ids
+from app.database import get_collection
 from app.schemas.broadcast import (
     CreateBroadcastRequest,
     BroadcastMessage,
     BroadcastRecipientReceipt,
-    InAppNotification,
     BroadcastAudienceType,
-    BroadcastPriority
 )
 
 logger = logging.getLogger("rexera.broadcast")
@@ -61,7 +59,6 @@ class BroadcastService:
         
         broadcast_col = get_collection("broadcasts")
         receipt_col = get_collection("broadcast_receipts")
-        notif_col = get_collection("notifications")
 
         total_recipients = len(recipients)
         now_utc = datetime.utcnow()
@@ -84,7 +81,6 @@ class BroadcastService:
         await broadcast_col.insert_one(broadcast_doc.dict(by_alias=True))
 
         receipt_records = []
-        notification_records = []
 
         for emp in recipients:
             emp_id = emp.get("employee_code") or emp.get("employee_id") or str(emp.get("_id"))
@@ -101,21 +97,9 @@ class BroadcastService:
                 ).dict(by_alias=True)
             )
 
-            notification_records.append(
-                InAppNotification(
-                    recipient_employee_id=emp_id,
-                    title=f"📢 {payload.title}",
-                    message_preview=payload.title,
-                    reference_id=broadcast_id,
-                    priority=payload.priority,
-                    requires_action=payload.requires_acknowledgment
-                ).dict(by_alias=True)
-            )
 
         for r in receipt_records:
             await receipt_col.insert_one(r)
-        for n in notification_records:
-            await notif_col.insert_one(n)
 
         return {
             "broadcast_id": broadcast_id,

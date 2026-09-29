@@ -1,6 +1,6 @@
 import html
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 from app.services.email_service import EmailService
 
 logger = logging.getLogger("rexera.bulk_import.alerts")

@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
-from app.database import get_collection, fix_id, fix_ids
+from app.database import get_collection, fix_ids
 from app.utils.validators import search_pattern
 
 logger = logging.getLogger("rexera.logs")

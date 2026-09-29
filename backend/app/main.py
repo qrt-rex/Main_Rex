@@ -8,10 +8,9 @@ backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.database import db_manager
@@ -51,12 +50,12 @@ from app.services.rbac_service import enforce, check_route_coverage
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("rexera.main")
 
-# Everything the API serves from disk lives inside backend/: the legacy HTML portal,
-# its assets, and the logo used by generated payslips. The React CRM is built and served
-# separately from ../frontend.
+# This one process serves the API, the logo and stamp used by payslips, and (once built with
+# `npm run build`) the React app from ../frontend/dist. The old HTML portal is gone: its public
+# pages are now the React routes /apply and /joining.
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORTAL_DIR = os.path.join(BACKEND_DIR, "legacy-portal")
-BILLING_PORTAL_DIR = os.path.abspath(os.path.join(BACKEND_DIR, "..", "Bill and Invoice", "frontend"))
+FRONTEND_DIST = os.path.abspath(os.path.join(BACKEND_DIR, "..", "frontend", "dist"))
+PAYSLIP_IMAGES = {p: os.path.basename(p) for p in ("logo.png", "stamp.png", "assets/logo.png", "assets/stamp.png")}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -136,30 +135,19 @@ async def health_check():
         "database_schema": settings.DB_SCHEMA,
     }
 
-# Mount Bill & Invoice standalone portal if present
-if os.path.exists(BILLING_PORTAL_DIR):
-    app.mount("/billing-portal", StaticFiles(directory=BILLING_PORTAL_DIR, html=True), name="billing_portal")
-
-# Mount static asset folders and frontend pages
-if os.path.exists(PORTAL_DIR):
-    assets_dir = os.path.join(PORTAL_DIR, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-    # Serve direct logo or stamp from workspace root or assets if requested
-    @app.get("/logo.png", include_in_schema=False)
-    async def get_root_logo():
-        root_logo = os.path.join(BACKEND_DIR, "logo.png")
-        if os.path.exists(root_logo):
-            return FileResponse(root_logo)
-        return FileResponse(os.path.join(assets_dir, "logo.png"))
-
-    @app.get("/stamp.png", include_in_schema=False)
-    async def get_root_stamp():
-        stamp_path = os.path.join(assets_dir, "stamp.png")
-        if os.path.exists(stamp_path):
-            return FileResponse(stamp_path)
-        return JSONResponse({"error": "Stamp not found"}, status_code=404)
-
-    # Mount entire frontend directory with HTML support as fallback
-    app.mount("/", StaticFiles(directory=PORTAL_DIR, html=True), name="portal")
+@app.get("/{path:path}", include_in_schema=False)
+async def web_app(path: str = ""):
+    """Payslip images, then the React app: a built file if it exists, else index.html for client-side routes."""
+    if path in PAYSLIP_IMAGES:  # payslip HTML asks for /assets/logo.png, falling back to /logo.png
+        return FileResponse(os.path.join(BACKEND_DIR, PAYSLIP_IMAGES[path]))
+    if path.split("/")[0] == "api" or not os.path.isdir(FRONTEND_DIST):
+        if not path:
+            return {"app": settings.APP_NAME, "status": "running",
+                    "message": "API only. Run the frontend (npm run dev) or build it (npm run build) to serve the app here."}
+        raise HTTPException(status_code=404, detail="Not Found")
+    file = os.path.abspath(os.path.join(FRONTEND_DIST, path))
+    if path and file.startswith(FRONTEND_DIST + os.sep) and os.path.isfile(file) and not file.endswith(".html"):
+        return FileResponse(file)
+    # The page itself is always revalidated, so a browser never keeps showing an outdated app
+    # (the removed HTML portal was served without cache headers and Chrome kept reusing it).
+    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"), headers={"Cache-Control": "no-cache"})

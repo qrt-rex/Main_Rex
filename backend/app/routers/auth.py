@@ -8,7 +8,6 @@ from app.schemas.auth import (
     Resend2FARequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
-    AdminProfileResponse
 )
 from app.services.auth_service import AuthService, get_current_admin, revoke_sessions, verify_2fa_temp_token
 from app.services.otp_service import OTPService
@@ -102,18 +101,6 @@ async def reset_password(req: ResetPasswordRequest):
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     return {"success": True, "message": msg}
-
-@router.get("/me", response_model=AdminProfileResponse)
-async def get_me(current_admin: Dict[str, Any] = Depends(get_current_admin)):
-    """Return profile details of the logged-in administrator."""
-    return AdminProfileResponse(
-        id=current_admin.get("id", str(current_admin.get("_id"))),
-        username=current_admin.get("username", "Admin"),
-        email=current_admin.get("email"),
-        role=current_admin.get("role", "admin"),
-        is_active=current_admin.get("is_active", True),
-        last_login=current_admin.get("last_login")
-    )
 
 @router.post("/logout")
 async def admin_logout(request: Request, current_admin: Dict[str, Any] = Depends(get_current_admin)):

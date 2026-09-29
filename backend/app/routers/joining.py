@@ -87,7 +87,7 @@ async def generate_joining_token(req: GenerateTokenRequest, admin: Dict[str, Any
 @router.post("/validate-token", response_model=ValidateTokenResponse)
 async def validate_joining_token(req: ValidateTokenRequest):
     """
-    Validates the joining token entered on /joining-login.html.
+    Validates the joining token entered on the /joining page.
     Triggers an email OTP to the candidate's registered email for identity verification.
     """
     col = get_collection("joining_tokens")
