@@ -1,12 +1,9 @@
 import os
-import tempfile
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 
-# Generated files (report exports, import error reports). On Vercel only the temp folder is
-# writable, and it is per instance, so a file may be gone by the time it is downloaded.
-DATA_DIR = (os.path.join(tempfile.gettempdir(), "rexera") if os.environ.get("VERCEL")
-            else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
+# Generated files (report exports, import error reports).
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 class Settings(BaseSettings):
     APP_NAME: str = "Rexera HR Management System"

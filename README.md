@@ -69,29 +69,24 @@ cd frontend && npm run lint    # oxlint
 cd backend && python -m pyflakes app
 ```
 
-### Deploy on Vercel
+### Deploy on Render
 
-`vercel.json` deploys the repository as one Vercel project with two services:
+One Render web service runs everything. The backend serves the API and the built web app.
 
-- `backend`: FastAPI, receives `/api/*` and the payslip images `/assets/logo.png` and `/assets/stamp.png`
-- `frontend`: the built React app, receives everything else, with unknown paths answered by `index.html`
+| Setting | Value |
+|---|---|
+| Root Directory | empty (repository root) |
+| Build Command | `pip install -r backend/requirements.txt && cd frontend && npm ci && npm run build` |
+| Start Command | `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
 
-Set the backend settings (see Configuration) as Vercel environment variables, because `backend/.env`
-is not uploaded. For Vercel also set:
+Set these environment variables:
 
+- `PYTHON_VERSION` (e.g. `3.11.9`) and `NODE_VERSION=22`
+- the backend settings (see Configuration), because `backend/.env` is not uploaded
 - `APP_ENV=production` and `EMAIL_DEV_MODE=False`
-- `AUTOMATIONS_ENABLED=False`
-- `COMPANY_WEBSITE` to the Vercel domain
-- `POSTGRES_URI` to a pooled connection if the database offers one
+- `COMPANY_WEBSITE` set to the service's address
 
-Add the domain to the Google OAuth client's allowed JavaScript origins.
-
-Limits on Vercel:
-
-- Scheduled automations don't run.
-- Generated report files are kept only briefly.
-- Uploads are capped at 4.5 MB.
-- Long broadcast email runs stop at the function time limit.
+Add that address to the Google OAuth client's allowed JavaScript origins.
 
 ---
 
