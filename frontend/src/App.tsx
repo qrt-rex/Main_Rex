@@ -46,6 +46,8 @@ const QuotationsList = lazy(() => import('./billing/QuotationsList').then((m) =>
 const BillingClients = lazy(() => import('./billing/BillingClients').then((m) => ({ default: m.BillingClients })));
 const BillingPayments = lazy(() => import('./billing/BillingPayments').then((m) => ({ default: m.BillingPayments })));
 const BillingReports = lazy(() => import('./billing/BillingReports').then((m) => ({ default: m.BillingReports })));
+const BillingRequests = lazy(() => import('./billing/BillingRequests').then((m) => ({ default: m.BillingRequests })));
+const BillingDocuments = lazy(() => import('./billing/BillingDocuments').then((m) => ({ default: m.BillingDocuments })));
 const LegalDashboard = lazy(() => import('./dashboards/LegalDashboard').then((m) => ({ default: m.LegalDashboard })));
 
 /** Route element guarded by the same permission the registry uses for navigation. */
@@ -111,6 +113,8 @@ export default function App() {
                       <Route path="clients" element={guard('billing-clients', <BillingClients />)} />
                       <Route path="payments" element={guard('billing-payments', <BillingPayments />)} />
                       <Route path="reports" element={guard('billing-reports', <BillingReports />)} />
+                      <Route path="requests" element={guard('billing-requests', <BillingRequests />)} />
+                      <Route path="documents" element={guard('billing-documents', <BillingDocuments />)} />
                       <Route path="*" element={<NotFound />} />
                     </Route>
 

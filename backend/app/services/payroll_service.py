@@ -6,6 +6,7 @@ from app.config import settings
 from app.services.calculation_engine import CalculationEngine
 from app.services.advance_loan_service import AdvanceLoanService
 from app.services.audit_service import AuditService
+from app.services import sales_payroll
 from app.services.pdf_service import PDFService
 from app.utils.validators import MONTH_NAMES, require_month_name, search_pattern
 from app.schemas.advanced_payroll import (
@@ -244,15 +245,23 @@ class PayrollService:
         # 1. Salary Structure
         structure = await cls.get_or_create_salary_structure(req.employee_id)
 
-        # 2. Attendance Data
-        working_days = req.working_days or 30
-        present_days = req.present_days if req.present_days is not None else float(working_days)
-        paid_leave = req.paid_leave_days or 0.0
-        unpaid_leave = req.unpaid_leave_days or 0.0
-        half_days = req.half_days or 0
-        absent_days = (working_days - present_days - paid_leave - unpaid_leave) if req.present_days is not None else 0.0
+        month_no = MONTH_NAMES.index(req.month) + 1
+
+        # 2. Attendance Data: from the employee's Start Day / End Day punches (and approved leave) unless the
+        # request states attendance itself, which then wins.
+        derived = None
+        if all(v is None for v in (req.working_days, req.present_days, req.paid_leave_days, req.unpaid_leave_days, req.half_days, req.late_count)):
+            derived = await sales_payroll.month_attendance(emp, req.year, month_no)
+        d = derived or {}
+        working_days = req.working_days or d.get("working_days") or 30
+        present_in = req.present_days if req.present_days is not None else d.get("present_days")
+        present_days = present_in if present_in is not None else float(working_days)
+        paid_leave = req.paid_leave_days or d.get("paid_leave_days", 0.0)
+        unpaid_leave = req.unpaid_leave_days or d.get("unpaid_leave_days", 0.0)
+        half_days = req.half_days or d.get("half_days", 0)
+        absent_days = (working_days - present_days - paid_leave - unpaid_leave) if present_in is not None else 0.0
         absent_days = max(0.0, absent_days)
-        late_count = req.late_count or 0
+        late_count = req.late_count or d.get("late_count", 0)
         overtime_hours = req.overtime_hours or 0.0
 
         attendance_dict = {
@@ -264,13 +273,12 @@ class PayrollService:
             "half_days": half_days,
             "absent_days": absent_days,
             "holidays": 0,
-            "weekly_offs": 4,
+            "weekly_offs": d.get("weekly_offs", 4),
             "late_count": late_count,
             "overtime_hours": overtime_hours
         }
 
         # 3. Active Advances & Loans whose recovery has started by this payroll month
-        month_no = MONTH_NAMES.index(req.month) + 1
         period = (req.year, month_no)
         month_prefix = f"{req.year}-{month_no:02d}"
         active_advances = [
@@ -300,7 +308,13 @@ class PayrollService:
         # If direct bonus override provided in request, inject it
         if req.bonus_amount and req.bonus_amount > 0:
             db_bonuses.append({"amount": req.bonus_amount, "type": "Performance Bonus"})
-        if req.incentive_amount and req.incentive_amount > 0:
+        # Sales collection incentive is worked out from client payments unless HR types an amount in.
+        incentive_details = None
+        if req.incentive_amount is None:
+            incentive_details = await sales_payroll.month_incentive(emp, structure, req.year, month_no)
+            if incentive_details and incentive_details["incentive"] > 0:
+                db_bonuses.append({"amount": incentive_details["incentive"], "type": "Sales Incentive"})
+        elif req.incentive_amount > 0:
             db_bonuses.append({"amount": req.incentive_amount, "type": "Sales Incentive"})
 
         manual_adjs = [m.model_dump() for m in (req.manual_adjustments or [])]
@@ -370,6 +384,8 @@ class PayrollService:
             "email_sent": False,
             "email_sent_at": None,
             "remarks": req.remarks or "",
+            "incentive_details": incentive_details,
+            "attendance_source": "start_end_day" if derived else "manual",
             "created_at": now_str,
             "updated_at": now_str
         }

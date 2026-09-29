@@ -1,14 +1,16 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { FileSpreadsheet, FileText, PlusCircle, ScrollText, Users, Banknote, BarChart3 } from 'lucide-react';
+import { FileSpreadsheet, FileText, PlusCircle, ScrollText, Users, Banknote, BarChart3, Inbox, FolderOpen } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 const TABS = [
   { path: '/billing/invoices', label: 'Invoices', icon: FileText, perm: 'billing.view' },
   { path: '/billing/create', label: 'Create Invoice', icon: PlusCircle, perm: 'billing.create' },
+  { path: '/billing/requests', label: 'Requests', icon: Inbox, perm: 'billing.view' },
   { path: '/billing/quotations', label: 'Quotations', icon: ScrollText, perm: 'billing.view' },
   { path: '/billing/clients', label: 'Clients', icon: Users, perm: 'billing.manage' },
   { path: '/billing/payments', label: 'Payments', icon: Banknote, perm: 'billing.manage' },
   { path: '/billing/reports', label: 'GSTR & Reports', icon: BarChart3, perm: 'billing.view' },
+  { path: '/billing/documents', label: 'Documents', icon: FolderOpen, perm: 'billing.view' },
 ];
 
 export function BillingSection() {

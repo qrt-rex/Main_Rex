@@ -121,7 +121,8 @@ class AttendanceService:
     @classmethod
     async def process_punch_in(
         cls,
-        payload: PunchInRequest
+        payload: PunchInRequest,
+        skip_location: bool = False
     ) -> Dict[str, Any]:
         """
         Atomic punch-in engine with timezone evaluation and status classification.
@@ -150,9 +151,12 @@ class AttendanceService:
             raise ValueError(f"Duplicate punch-in: Attendance already recorded for {today_str} at {existing.get('punch_in_local')}.")
 
         # 3. Geofence & IP Whitelist Verification
-        is_valid, distance, err_msg = await cls.validate_location_and_network(
-            config, work_mode, payload.latitude, payload.longitude, payload.client_ip
-        )
+        if skip_location:  # Sales Start Day: field staff have no office GPS/IP to check
+            is_valid, distance, err_msg = True, None, None
+        else:
+            is_valid, distance, err_msg = await cls.validate_location_and_network(
+                config, work_mode, payload.latitude, payload.longitude, payload.client_ip
+            )
         if not is_valid:
             raise PermissionError(err_msg)
 

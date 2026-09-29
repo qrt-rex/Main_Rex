@@ -127,7 +127,7 @@ export function QuotationsList() {
                         >
                           <Eye size={15} />
                         </button>
-                        {can('billing.create') && q.status !== 'converted' && (
+                        {can('billing.tax_invoice') && q.status !== 'converted' && (
                           <button
                             onClick={() => handleConvert(q.id, q.quotation_number)}
                             title="Convert to Tax Invoice"

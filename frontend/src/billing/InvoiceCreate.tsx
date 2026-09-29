@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, CheckCircle2, ArrowLeft, Sparkles } from 'lucide-react';
 import { useToast } from '../components/common/ToastContext';
 import { Card, CardHeader } from '../components/common/Card';
+import { useAuth } from '../auth/AuthContext';
 import { api, ApiError } from '../lib/api';
 import { todayISO } from '../lib/format';
+import type { InvoiceRequest } from './BillingRequests';
 
 const GST_RATES = [0, 5, 12, 18, 28];
 // GSTIN state code -> the state options this form offers.
@@ -59,7 +61,10 @@ export function InvoiceCreate() {
   const [params] = useSearchParams();
 
   const [branchKey, setBranchKey] = useState('ahmedabad_y');
-  const [invoiceType, setInvoiceType] = useState('invoice');
+  // Tax invoices are HR-only; everyone else with billing access issues proforma invoices.
+  const { can } = useAuth();
+  const canTax = can('billing.tax_invoice');
+  const [invoiceType, setInvoiceType] = useState(canTax ? 'invoice' : 'proforma');
   const [invoiceNumberPreview, setInvoiceNumberPreview] = useState('Loading...');
   // Local dates: toISOString() gave the UTC date, i.e. "yesterday" in India before 5:30 am.
   const [invoiceDate, setInvoiceDate] = useState(todayISO);
@@ -72,6 +77,9 @@ export function InvoiceCreate() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
+  // Who the collections on this invoice are credited to (sales incentive); sales users default to themselves.
+  const [salesPeople, setSalesPeople] = useState<{ email: string; name: string }[]>([]);
+  const [salesPersonEmail, setSalesPersonEmail] = useState('');
 
   // Selected client details
   const [clientName, setClientName] = useState('');
@@ -99,6 +107,7 @@ export function InvoiceCreate() {
   ]);
 
   const [submitting, setSubmitting] = useState(false);
+  const requestId = params.get('request');
 
   const applyClient = (cl: Client | undefined) => {
     if (!cl) return;
@@ -124,15 +133,44 @@ export function InvoiceCreate() {
   }, [branchKey, invoiceType]);
 
   useEffect(() => {
+    api.get<{ items: { email: string; name: string }[] }>('/api/billing/sales-people')
+      .then((d) => setSalesPeople(d.items || []))
+      .catch(() => setSalesPeople([]));
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     Promise.all([
       api.get<{ items: Client[] }>('/api/billing/clients'),
       api.get<{ items: Product[] }>('/api/billing/products'),
+      requestId ? api.get<{ request: InvoiceRequest }>(`/api/billing/requests/${requestId}`) : Promise.resolve(null),
     ])
-      .then(([cData, pData]) => {
+      .then(([cData, pData, reqData]) => {
         if (cancelled) return;
         setClients(cData.items || []);
         setProducts(pData.items || []);
+        const req = reqData?.request;
+        if (req) {
+          // An invoice request: fill the form from it so the reviewer only checks and saves.
+          if (req.status !== 'pending') showToast(`${req.request_number} has already been ${req.status}`, 'warning');
+          const stateCode = Object.entries(GST_STATES).find(([, name]) => name === req.client_state)?.[0] || req.client_gstin.slice(0, 2) || '99';
+          setSelectedClientId('');
+          setBranchKey(req.branch_key);
+          setSalesPersonEmail(req.sales_person_email || '');
+          setClientName(req.billing_name);
+          setClientGstin(req.client_gstin);
+          setClientAddress(req.billing_address);
+          setClientPhone(req.billing_phone);
+          setClientState(req.client_state || 'Gujarat');
+          setClientStateCode(stateCode);
+          setItems(req.items.map((it, i) => ({
+            id: `item-${i + 1}`, name: it.particulars, description: '', hsn_sac: '997159', quantity: it.quantity, unit: 'NOS',
+            unit_price: it.rate, discount: 0, gst_rate: 18, amount: it.quantity * it.rate,
+          })));
+          if (req.remark) setNotes((n) => `${n}\nRemark: ${req.remark}`);
+          showToast(`Invoice pre-filled from ${req.request_number}`, 'info');
+          return;
+        }
         const fromLegal = params.get('client_name');
         if (!fromLegal) {
           applyClient(cData.items?.[0]);
@@ -290,10 +328,18 @@ export function InvoiceCreate() {
           amount: i.amount
         })),
         notes,
+        sales_person_email: salesPersonEmail || undefined,
       };
 
-      const data = await api.post<{ invoice?: { invoice_number?: string } }>('/api/billing/invoices', payload);
+      const data = await api.post<{ invoice?: { id?: string; invoice_number?: string } }>('/api/billing/invoices', payload);
       showToast(`Invoice ${data.invoice?.invoice_number || ''} generated successfully!`, 'success');
+      if (requestId && data.invoice?.id) {
+        try {
+          await api.post(`/api/billing/requests/${requestId}/approve`, { invoice_id: data.invoice.id });
+        } catch (err) {
+          showToast(err instanceof ApiError ? err.message : 'The invoice was saved but the request could not be marked approved', 'warning');
+        }
+      }
       navigate('/billing/invoices');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Error generating invoice', 'error');
@@ -328,7 +374,7 @@ export function InvoiceCreate() {
                 onChange={(e) => setInvoiceType(e.target.value)}
                 className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
               >
-                <option value="invoice">Tax Invoice (Standard GST)</option>
+                {canTax && <option value="invoice">Tax Invoice (Standard GST)</option>}
                 <option value="proforma">Proforma Invoice</option>
               </select>
             </div>
@@ -343,6 +389,18 @@ export function InvoiceCreate() {
                 <option value="ahmedabad_y">Ahmedabad(Y) [AM1 - Ghatlodia]</option>
                 <option value="ahmedabad_a">Ahmedabad(A) [AM2 - Navrangpura]</option>
                 <option value="baroda">Baroda [BRD - Race Course Rd]</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text mb-1">Sales Person</label>
+              <select
+                value={salesPersonEmail}
+                onChange={(e) => setSalesPersonEmail(e.target.value)}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
+              >
+                <option value="">{can('billing.tax_invoice') ? 'None (no incentive)' : 'Myself'}</option>
+                {salesPeople.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
               </select>
             </div>
 

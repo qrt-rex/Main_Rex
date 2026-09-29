@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Banknote } from 'lucide-react';
+import { Banknote, Trash2 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { useToast } from '../components/common/ToastContext';
+import { useConfirm } from '../components/common/ConfirmDialog';
 import { api, ApiError } from '../lib/api';
 
 interface Payment {
@@ -17,8 +18,10 @@ interface Payment {
 
 export function BillingPayments() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,7 +30,18 @@ export function BillingPayments() {
       .catch((err) => showToast(err instanceof ApiError ? err.message : 'Could not load payments', 'error'))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [showToast]);
+  }, [showToast, reload]);
+
+  const reverse = async (p: Payment) => {
+    if (!(await confirm({ title: `Remove payment on ${p.invoice_number}?`, tone: 'danger', confirmText: 'Remove', message: `₹${p.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })} goes back onto the invoice balance.` }))) return;
+    try {
+      await api.delete(`/api/billing/payments/${p.id}`);
+      showToast('Payment removed', 'success');
+      setReload((n) => n + 1);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not remove the payment', 'error');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -43,14 +57,15 @@ export function BillingPayments() {
                 <th className="px-4 py-3">Reference / UTR</th>
                 <th className="px-4 py-3 text-right">Amount Received (₹)</th>
                 <th className="px-4 py-3 text-right">Recorded By</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
-                <tr><td colSpan={7} className="p-8 text-center text-text-muted">Loading payment ledger...</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center text-text-muted">Loading payment ledger...</td></tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-text-muted">
+                  <td colSpan={8} className="p-10 text-center text-text-muted">
                     <Banknote className="mx-auto h-8 w-8 text-text-muted/50 mb-2" />
                     No payments recorded yet.
                   </td>
@@ -69,6 +84,10 @@ export function BillingPayments() {
                       ₹{p.amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-text-muted">{p.recorded_by}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button type="button" onClick={() => reverse(p)} title="Remove payment" aria-label={`Remove payment on ${p.invoice_number}`}
+                        className="rounded-md p-1.5 text-rose-600 hover:bg-rose-500/10"><Trash2 size={15} /></button>
+                    </td>
                   </tr>
                 ))
               )}

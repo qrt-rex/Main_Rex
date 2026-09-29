@@ -7,6 +7,7 @@ Admin and Legal (and Super Admin) add and edit leads, schemes and material (`sal
 sales staff use it from their dashboard (`sales.hub.view`) and only see the leads assigned to them.
 """
 import base64
+import logging
 import os
 import re
 import uuid
@@ -20,10 +21,13 @@ from starlette.datastructures import UploadFile
 
 from app.config import settings
 from app.database import get_collection
+from app.schemas.attendance import PunchInRequest, PunchOutRequest
+from app.services.attendance_service import AttendanceService
 from app.services.auth_service import get_current_admin
 from app.services.rbac_service import ROLES, get_role_permissions, normalize_role
 
 router = APIRouter(prefix="/api/sales-hub", tags=["Sales Workspace"])
+logger = logging.getLogger("rexera.sales_hub")
 
 LEAD_STATUSES = ["NEW", "ATTEMPTED", "CALL_BACK", "INTERESTED", "NOT_INTERESTED", "CONVERTED", "INVALID"]
 OPEN_STATUSES = {"NEW", "ATTEMPTED", "CALL_BACK", "INTERESTED"}
@@ -109,9 +113,30 @@ async def summary(admin: Dict[str, Any] = Depends(get_current_admin)):
 # ---------------------------------------------------------------------------
 # Start / end the day (feeds the attendance board)
 # ---------------------------------------------------------------------------
+async def _sync_attendance(admin: Dict[str, Any], event: str) -> None:
+    """
+    Start Day is the attendance punch-in and End Day the punch-out, so payroll sees the same day. The existing
+    shift rules decide the status: late arrival is Late / Half Day, logging out before the early-logout cutoff
+    downgrades to Half Day. Staff without an employee record (matched by email) just skip attendance.
+    """
+    email = (admin.get("email") or "").strip()
+    emp = await get_collection("employees").find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}) if email else None
+    if not emp:
+        return
+    ref = emp.get("employee_code") or emp.get("employee_id") or str(emp["_id"])
+    try:
+        if event == "in":
+            await AttendanceService.process_punch_in(PunchInRequest(employee_id=ref), skip_location=True)
+        else:
+            await AttendanceService.process_punch_out(PunchOutRequest(employee_id=ref))
+    except (ValueError, PermissionError) as e:  # already punched today, no email on file...: the day session still works
+        logger.info("Attendance %s skipped for %s: %s", event, email, e)
+
+
 @router.post("/day/start")
 async def start_day(admin: Dict[str, Any] = Depends(get_current_admin)):
     me, today = _me(admin), _today()
+    await _sync_attendance(admin, "in")
     col = get_collection("sales_day_sessions")
     existing = await col.find_one({"user_id": me["user_id"], "date": today})
     if existing and not existing.get("ended_at"):
@@ -131,6 +156,7 @@ async def end_day(admin: Dict[str, Any] = Depends(get_current_admin)):
     existing = await col.find_one({"user_id": me["user_id"], "date": _today()})
     if not existing:
         raise HTTPException(status_code=409, detail="You haven't started your day yet.")
+    await _sync_attendance(admin, "out")
     if not existing.get("ended_at"):
         await col.update_one({"_id": existing["_id"]}, {"$set": {"ended_at": _now()}})
     return _id(await col.find_one({"_id": existing["_id"]}))

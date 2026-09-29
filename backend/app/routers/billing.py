@@ -3,6 +3,8 @@ Billing and Invoicing Router for Rexera CRM.
 Provides Indian GST compliance, multi-branch invoice numbering, quotations,
 clients, products, payments, reports and vector PDF generation.
 """
+import base64
+import csv
 import io
 import os
 import re
@@ -10,7 +12,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from xml.sax.saxutils import escape as _xml_escape
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.database import get_collection
@@ -495,6 +497,37 @@ def generate_invoice_pdf(invoice: Dict[str, Any]) -> bytes:
 # API Endpoints
 # ---------------------------------------------------------------------------
 
+async def _require_tax_invoice_access(admin: dict, invoice_type: str) -> None:
+    """Tax invoices are HR-only; anyone with billing.create may issue proforma invoices."""
+    if invoice_type != "invoice":
+        return
+    from app.services.rbac_service import get_role_permissions
+    if "billing.tax_invoice" not in await get_role_permissions(admin.get("role")):
+        raise HTTPException(status_code=403, detail="Only HR can issue or edit tax invoices. You can issue proforma invoices.")
+
+async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, str]:
+    """The sales account a sale (and its collections) is credited to: the one named, else the creator if they are sales."""
+    from app.services import sales_payroll
+    from app.services.rbac_service import normalize_role
+    email = str(email or "").strip().lower()
+    if not email and normalize_role(admin.get("role")) == "sales":
+        email = str(admin.get("email") or "").strip().lower()
+    if not email:
+        return {"sales_person_email": "", "sales_person_name": ""}
+    user = await sales_payroll.sales_user(email)
+    if not user:
+        raise HTTPException(status_code=422, detail=f"{email} is not a sales account.")
+    return {"sales_person_email": email, "sales_person_name": user.get("username") or email}
+
+@router.get("/sales-people")
+async def list_sales_people(admin: dict = Depends(get_current_admin)):
+    """Sales accounts an invoice can be credited to."""
+    from app.services.rbac_service import normalize_role
+    users = [u for u in await get_collection("admins").find({}).to_list(2000)
+             if u.get("is_active", True) and normalize_role(u.get("role")) == "sales"]
+    items = [{"email": str(u.get("email") or "").lower(), "name": u.get("username") or u.get("email", "")} for u in users]
+    return {"success": True, "items": sorted(items, key=lambda i: i["name"].lower())}
+
 @router.get("/branches")
 async def get_branches(admin: dict = Depends(get_current_admin)):
     """Lists available branches."""
@@ -563,6 +596,8 @@ async def create_invoice(payload: Dict[str, Any], admin: dict = Depends(get_curr
         raise HTTPException(status_code=422, detail="Unknown branch.")
     if invoice_type not in ("invoice", "proforma"):
         raise HTTPException(status_code=422, detail="Invoice type must be 'invoice' or 'proforma'.")
+    await _require_tax_invoice_access(admin, invoice_type)
+    sales_person = await _resolve_sales_person(payload.get("sales_person_email"), admin)
     client = validate_client(payload.get("client"))
     items = validate_items(payload.get("items"))
     today = date.today().isoformat()
@@ -626,6 +661,7 @@ async def create_invoice(payload: Dict[str, Any], admin: dict = Depends(get_curr
         "amount_in_words": calc["amount_in_words"],
         "status": inv_status,
         "notes": payload.get("notes", ""),
+        **sales_person,
         "created_by": admin.get("email") or admin.get("username", "admin"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -648,6 +684,7 @@ async def update_invoice(invoice_id: str, payload: Dict[str, Any], admin: dict =
     inv = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]})
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    await _require_tax_invoice_access(admin, inv.get("invoice_type", "invoice"))
 
     client = validate_client(payload.get("client", inv.get("client", {})))
     items = validate_items(payload.get("items", inv.get("items", [])))
@@ -694,6 +731,8 @@ async def update_invoice(invoice_id: str, payload: Dict[str, Any], admin: dict =
         "notes": payload.get("notes", inv.get("notes", "")),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if "sales_person_email" in payload and await _can_manage_billing(admin):  # who earns the incentive: managers only
+        update_data.update(await _resolve_sales_person(payload["sales_person_email"], {}))
     await coll.update_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]}, {"$set": update_data})
     updated = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]})
     return {"success": True, "invoice": updated}
@@ -1237,3 +1276,226 @@ async def update_billing_settings(payload: Dict[str, Any], admin: dict = Depends
 @router.get("/export/zip")
 async def export_zip(admin: dict = Depends(get_current_admin)):
     return {"success": True, "message": "ZIP batch download ready"}
+
+
+# ---------------------------------------------------------------------------
+# Invoice requests, documents, payment reversal, exports & monthly summary
+# (features carried over from the standalone Bill-Invoice module)
+# ---------------------------------------------------------------------------
+
+async def _can_manage_billing(admin: dict) -> bool:
+    from app.services.rbac_service import get_role_permissions
+    return "billing.manage" in await get_role_permissions(admin.get("role"))
+
+def _who(admin: dict) -> str:
+    return admin.get("email") or admin.get("username", "admin")
+
+def _csv_response(filename: str, header: List[str], rows: List[List[Any]]) -> Response:
+    def cell(v: Any) -> Any:
+        # Neutralise spreadsheet formulas in user-supplied text.
+        return "'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(header)
+    w.writerows([[cell(v) for v in r] for r in rows])
+    return Response(content="﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+# ---- Invoice requests: a billing user asks a manager to issue a tax invoice ----
+
+def _clean_request(payload: Dict[str, Any]) -> Dict[str, Any]:
+    name = str(payload.get("billing_name") or "").strip()
+    address = str(payload.get("billing_address") or "").strip()
+    if not name or not address:
+        raise HTTPException(status_code=422, detail="Enter the client name and address.")
+    gstin = str(payload.get("client_gstin") or "").strip().upper()
+    if gstin and not GSTIN_RE.match(gstin):
+        raise HTTPException(status_code=422, detail="The client GSTIN is not valid.")
+    branch_key = payload.get("branch_key") or "ahmedabad_y"
+    if branch_key not in BRANCHES_MASTER:
+        raise HTTPException(status_code=422, detail="Choose a valid branch.")
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise HTTPException(status_code=422, detail="Add at least one item.")
+    items = []
+    for n, it in enumerate(raw_items, 1):
+        it = it if isinstance(it, dict) else {}
+        particulars = str(it.get("particulars") or "").strip()
+        qty = _num(it.get("quantity"), f"Item {n} quantity")
+        rate = _num(it.get("rate"), f"Item {n} rate")
+        if not particulars or qty <= 0 or rate < 0:
+            raise HTTPException(status_code=422, detail=f"Complete item {n}.")
+        items.append({"particulars": particulars[:500], "quantity": qty, "rate": rate})
+    return {
+        "billing_name": name[:255], "billing_address": address[:1000],
+        "billing_phone": str(payload.get("billing_phone") or "").strip()[:60],
+        "client_gstin": gstin, "client_state": str(payload.get("client_state") or "").strip()[:100],
+        "branch_key": branch_key, "remark": str(payload.get("remark") or "").strip()[:1000],
+        "items": items, "estimated_total": round(sum(i["quantity"] * i["rate"] for i in items), 2),
+    }
+
+async def _load_request(request_id: str, admin: dict) -> Dict[str, Any]:
+    r = await get_collection("billing_requests").find_one({"$or": [{"id": request_id}, {"_id": request_id}]})
+    if not r or not (r.get("requested_by") == _who(admin) or await _can_manage_billing(admin)):
+        raise HTTPException(status_code=404, detail="Request not found")
+    return r
+
+@router.get("/requests")
+async def list_requests(status: Optional[str] = Query(None), admin: dict = Depends(get_current_admin)):
+    query: Dict[str, Any] = {}
+    if not await _can_manage_billing(admin):
+        query["requested_by"] = _who(admin)
+    if status and status != "all":
+        query["status"] = status
+    items = await get_collection("billing_requests").find(query).sort("created_at", -1).to_list(500)
+    return {"success": True, "items": items}
+
+@router.post("/requests", status_code=status.HTTP_201_CREATED)
+async def create_request(payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
+    counters = get_collection("billing_counters")
+    seq = ((await counters.find_one({"key": "REQUEST"})) or {}).get("sequence_value", 0) + 1
+    await counters.update_one({"key": "REQUEST"}, {"$set": {"key": "REQUEST", "sequence_value": seq}}, upsert=True)
+    rid = str(uuid.uuid4())
+    from app.services.rbac_service import normalize_role
+    is_sales = normalize_role(admin.get("role")) == "sales"
+    doc = {**_clean_request(payload), "id": rid, "_id": rid, "sales_person_email": _who(admin).lower() if is_sales else "", "request_number": f"REQ-{seq:04d}", "status": "pending",
+           "requested_by": _who(admin), "requested_by_name": admin.get("name") or _who(admin),
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await get_collection("billing_requests").insert_one(doc)
+    return {"success": True, "request": doc}
+
+@router.get("/requests/{request_id}")
+async def get_request(request_id: str, admin: dict = Depends(get_current_admin)):
+    return {"success": True, "request": await _load_request(request_id, admin)}
+
+async def _close_request(request_id: str, admin: dict, new_status: str, extra: Dict[str, Any]) -> Dict[str, Any]:
+    r = await _load_request(request_id, admin)
+    if r.get("status") != "pending":
+        raise HTTPException(status_code=409, detail="That request has already been processed.")
+    coll = get_collection("billing_requests")
+    await coll.update_one({"_id": r["_id"]}, {"$set": {"status": new_status, "reviewed_by": _who(admin),
+                                                       "reviewed_at": datetime.now(timezone.utc).isoformat(), **extra}})
+    return await coll.find_one({"_id": r["_id"]})
+
+@router.post("/requests/{request_id}/approve")
+async def approve_request(request_id: str, payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
+    """Marks a request approved once the invoice made from it exists."""
+    inv_id = payload.get("invoice_id")
+    inv = await get_collection("billing_invoices").find_one({"$or": [{"id": inv_id}, {"_id": inv_id}]})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    req = await _close_request(request_id, admin, "approved", {"invoice_id": inv.get("id"), "invoice_number": inv.get("invoice_number")})
+    return {"success": True, "request": req}
+
+@router.post("/requests/{request_id}/reject")
+async def reject_request(request_id: str, admin: dict = Depends(get_current_admin)):
+    return {"success": True, "request": await _close_request(request_id, admin, "rejected", {})}
+
+# ---- Shared documents (rate cards, brochures, templates) ----
+
+MAX_DOC_BYTES = 5 * 1024 * 1024
+
+def _doc_view(d: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: d.get(k) for k in ("id", "filename", "content_type", "size", "uploaded_by", "created_at")}
+
+@router.get("/documents")
+async def list_documents(admin: dict = Depends(get_current_admin)):
+    docs = await get_collection("billing_documents").find({}).sort("created_at", -1).to_list(500)
+    return {"success": True, "items": [_doc_view(d) for d in docs]}
+
+@router.post("/documents", status_code=status.HTTP_201_CREATED)
+async def upload_document(file: UploadFile = File(...), admin: dict = Depends(get_current_admin)):
+    data = await file.read(MAX_DOC_BYTES + 1)
+    if len(data) > MAX_DOC_BYTES:
+        raise HTTPException(status_code=413, detail=f"Files can be at most {MAX_DOC_BYTES // (1024 * 1024)} MB.")
+    if not data:
+        raise HTTPException(status_code=422, detail="The file is empty.")
+    doc_id = str(uuid.uuid4())
+    name = (file.filename or "file").replace("\\", "/").rsplit("/", 1)[-1][:255] or "file"
+    doc = {"id": doc_id, "_id": doc_id, "filename": name, "content_type": (file.content_type or "application/octet-stream")[:120],
+           "size": len(data), "uploaded_by": _who(admin), "created_at": datetime.now(timezone.utc).isoformat()}
+    await get_collection("billing_document_files").insert_one({"_id": doc_id, "data_b64": base64.b64encode(data).decode("ascii")})
+    await get_collection("billing_documents").insert_one(doc)
+    return {"success": True, "document": _doc_view(doc)}
+
+@router.get("/documents/{document_id}/download")
+async def download_document(document_id: str, admin: dict = Depends(get_current_admin)):
+    d = await get_collection("billing_documents").find_one({"_id": document_id})
+    f = await get_collection("billing_document_files").find_one({"_id": document_id})
+    if not d or not f:
+        raise HTTPException(status_code=404, detail="Document not found")
+    safe = re.sub(r'[^A-Za-z0-9._ -]', "_", d["filename"])
+    # Always a download, never rendered inline, so an uploaded HTML/SVG file cannot run script.
+    return Response(content=base64.b64decode(f["data_b64"]), media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}"', "X-Content-Type-Options": "nosniff"})
+
+@router.delete("/documents/{document_id}")
+async def delete_document(document_id: str, admin: dict = Depends(get_current_admin)):
+    res = await get_collection("billing_documents").delete_one({"_id": document_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await get_collection("billing_document_files").delete_one({"_id": document_id})
+    return {"success": True, "message": "Document deleted"}
+
+# ---- Payment reversal ----
+
+@router.delete("/payments/{payment_id}")
+async def delete_payment(payment_id: str, admin: dict = Depends(get_current_admin)):
+    """Removes a wrongly recorded payment and puts its amount back on the invoice balance."""
+    coll_p = get_collection("billing_payments")
+    coll_i = get_collection("billing_invoices")
+    pay = await coll_p.find_one({"$or": [{"id": payment_id}, {"_id": payment_id}]})
+    if not pay:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    inv = await coll_i.find_one({"$or": [{"id": pay.get("invoice_id")}, {"_id": pay.get("invoice_id")}]})
+    if inv:
+        grand = float(inv.get("grand_total", 0))
+        paid = round(max(float(inv.get("paid_amount", 0)) - float(pay.get("amount", 0)), 0.0), 2)
+        new_status = inv.get("status") if inv.get("status") == "cancelled" else "paid" if paid >= grand > 0 else "partially_paid" if paid > 0 else "issued"
+        await coll_i.update_one({"_id": inv["_id"]}, {"$set": {"paid_amount": paid, "balance_amount": round(max(grand - paid, 0.0), 2),
+                                                              "status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await coll_p.delete_one({"_id": pay["_id"]})
+    return {"success": True, "message": "Payment removed"}
+
+# ---- Exports & monthly summary ----
+
+@router.get("/export/invoices.csv")
+async def export_invoices_csv(admin: dict = Depends(get_current_admin)):
+    invs = await get_collection("billing_invoices").find({}).sort("invoice_date", -1).to_list(50000)
+    rows = [[i.get("invoice_number"), i.get("invoice_type"), i.get("invoice_date"), i.get("due_date"), i.get("branch_key"),
+             (i.get("client") or {}).get("name"), (i.get("client") or {}).get("gstin"), i.get("taxable_amount"),
+             i.get("cgst_amount"), i.get("sgst_amount"), i.get("igst_amount"), i.get("grand_total"),
+             i.get("paid_amount"), i.get("balance_amount"), i.get("status")] for i in invs]
+    return _csv_response("invoices.csv", ["Invoice #", "Type", "Date", "Due date", "Branch", "Client", "GSTIN", "Taxable",
+                                          "CGST", "SGST", "IGST", "Total", "Paid", "Balance", "Status"], rows)
+
+@router.get("/reports/gst-register.csv")
+async def gst_register_csv(month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"), admin: dict = Depends(get_current_admin)):
+    invs = [i for i in await get_collection("billing_invoices").find({"invoice_type": "invoice"}).sort("invoice_date", 1).to_list(50000)
+            if i.get("status") != "cancelled" and (not month or str(i.get("invoice_date", ""))[:7] == month)]
+    rows = [[i.get("invoice_date"), i.get("invoice_number"), (i.get("client") or {}).get("name"), (i.get("client") or {}).get("gstin"),
+             (i.get("client") or {}).get("state"), i.get("taxable_amount"), i.get("cgst_amount"), i.get("sgst_amount"),
+             i.get("igst_amount"), i.get("grand_total")] for i in invs]
+    return _csv_response(f"gst-register{'-' + month if month else ''}.csv",
+                         ["Date", "Invoice #", "Client", "GSTIN", "State", "Taxable", "CGST", "SGST", "IGST", "Total"], rows)
+
+@router.get("/reports/monthly")
+async def monthly_summary(admin: dict = Depends(get_current_admin)):
+    """Invoiced, GST and collected per calendar month (tax invoices only, cancelled excluded)."""
+    months: Dict[str, Dict[str, float]] = {}
+
+    def row(m: str) -> Dict[str, float]:
+        return months.setdefault(m, {"invoices": 0, "taxable": 0.0, "tax": 0.0, "invoiced": 0.0, "collected": 0.0})
+
+    for i in await get_collection("billing_invoices").find({"invoice_type": "invoice"}).to_list(50000):
+        if i.get("status") == "cancelled" or not i.get("invoice_date"):
+            continue
+        r = row(str(i["invoice_date"])[:7])
+        r["invoices"] += 1
+        r["taxable"] += float(i.get("taxable_amount", 0))
+        r["tax"] += float(i.get("cgst_amount", 0)) + float(i.get("sgst_amount", 0)) + float(i.get("igst_amount", 0))
+        r["invoiced"] += float(i.get("grand_total", 0))
+    for p in await get_collection("billing_payments").find({}).to_list(50000):
+        if p.get("payment_date"):
+            row(str(p["payment_date"])[:7])["collected"] += float(p.get("amount", 0))
+    return {"success": True, "items": [{"month": m, **{k: round(v, 2) for k, v in r.items()}} for m, r in sorted(months.items(), reverse=True)]}

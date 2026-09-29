@@ -1,8 +1,10 @@
 import logging
+import re
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Tuple
 
 from app.database import get_collection, fix_id, fix_ids
+from app.services.rbac_service import normalize_role
 from app.schemas.leave import (
     LeaveRequest,
     LeaveBalance,
@@ -16,8 +18,27 @@ from app.schemas.leave import (
 
 logger = logging.getLogger("rexera.leave")
 
+# Who approves whose leave: staff and sales -> HR; HR -> Admin; Admin -> Super Admin.
+# A higher role may always decide a lower level's request.
+LEVEL_BY_APPLICANT_ROLE = {"hr": "ADMIN", "admin": "SUPERADMIN", "superadmin": "SUPERADMIN"}
+DECIDERS = {"HR": {"hr", "admin", "superadmin"}, "ADMIN": {"admin", "superadmin"}, "SUPERADMIN": {"superadmin"}}
+LEVEL_LABEL = {"HR": "HR", "ADMIN": "Admin", "SUPERADMIN": "Super Admin"}
+
+
+def can_decide(leave_doc: Dict[str, Any], role: Optional[str]) -> bool:
+    return normalize_role(role) in DECIDERS.get(leave_doc.get("approval_level") or "HR", DECIDERS["HR"])
+
 
 class LeaveService:
+    @staticmethod
+    async def applicant_login(email: str) -> Optional[Dict[str, Any]]:
+        """The login account behind an employee record (matched by email), which decides who approves their leave."""
+        if not email:
+            return None
+        pattern = {"$regex": f"^{re.escape(email.strip())}$", "$options": "i"}
+        accounts = await get_collection("admins").find({"email": pattern}).to_list(5)
+        return next((a for a in accounts if a.get("is_active", True)), None)
+
     @staticmethod
     def calculate_requested_days(start_str: str, end_str: str, duration_type: LeaveDurationType) -> float:
         if duration_type in [LeaveDurationType.FIRST_HALF, LeaveDurationType.SECOND_HALF]:
@@ -148,6 +169,9 @@ class LeaveService:
         is_lop = lop_days > 0
 
         department = emp.get("department", "General")
+        account = await cls.applicant_login(emp.get("email"))
+        applicant_role = normalize_role((account or {}).get("role"))
+        approval_level = LEVEL_BY_APPLICANT_ROLE.get(applicant_role, "HR")
 
         leave_record = LeaveRequest(
             employee_id=emp_id,
@@ -165,6 +189,8 @@ class LeaveService:
             is_loss_of_pay=is_lop,
             lop_days=lop_days,
             paid_leave_days=paid_days,
+            applicant_role=applicant_role,
+            approval_level=approval_level,
             status=LeaveStatus.PENDING
         )
 
@@ -198,6 +224,14 @@ class LeaveService:
 
         if leave_doc.get("status") != LeaveStatus.PENDING.value:
             raise ValueError(f"Cannot alter request with status '{leave_doc.get('status')}'.")
+
+        decider_role = normalize_role(admin_user.get("role"))
+        level = leave_doc.get("approval_level") or "HR"
+        if not can_decide(leave_doc, decider_role):
+            raise ValueError(f"This leave request needs approval from {LEVEL_LABEL.get(level, level)}.")
+        own = str(admin_user.get("email") or "").strip().lower()
+        if own and own == str(leave_doc.get("employee_email") or "").strip().lower() and decider_role != "superadmin":
+            raise ValueError("You cannot decide your own leave request.")
 
         now_utc = datetime.utcnow()
         new_status = LeaveStatus.APPROVED.value if payload.action == "APPROVE" else LeaveStatus.REJECTED.value
@@ -277,10 +311,13 @@ class LeaveService:
         }
 
     @classmethod
-    async def get_hr_pending_leaves_dashboard(cls) -> List[Dict[str, Any]]:
+    async def get_hr_pending_leaves_dashboard(cls, viewer_role: Optional[str] = None, viewer_email: str = "") -> List[Dict[str, Any]]:
+        """Pending requests this viewer is allowed to decide (their own never appear here)."""
         leave_col = get_collection("leave_requests")
         cursor = leave_col.find({"status": LeaveStatus.PENDING.value}).sort("created_at", -1)
-        pending_docs = await cursor.to_list(200)
+        me = viewer_email.strip().lower()
+        pending_docs = [d for d in await cursor.to_list(200)
+                        if can_decide(d, viewer_role) and not (me and me == str(d.get("employee_email") or "").strip().lower() and normalize_role(viewer_role) != "superadmin")]
 
         enriched_list = []
         for doc in pending_docs:

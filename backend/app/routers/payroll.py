@@ -28,6 +28,8 @@ from app.schemas.payroll import (
 )
 from app.schemas.payroll_adjustment import PayrollAdjustmentRequest, PayrollAdjustmentResponse
 from app.services.log_service import LogService
+from app.services import sales_payroll
+from app.utils.validators import MONTH_NAMES, require_month_name
 
 logger = logging.getLogger("rexera.router.payroll")
 router = APIRouter(prefix="/api/payroll", tags=["Payroll Operations & Compliance"])
@@ -87,6 +89,29 @@ async def calculate_single_employee_payroll(
     except Exception as e:
         logger.error(f"Payroll calculation error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.get("/sales-preview")
+async def sales_payroll_preview(
+    employee_id: str,
+    month: str,
+    year: int = Query(..., ge=2000, le=2100),
+    admin: Dict[str, Any] = Depends(get_current_admin)
+):
+    """What payroll will take for this employee: attendance from Start/End Day punches and the collection incentive."""
+    try:
+        month_name = require_month_name(month)
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(ve))
+    emp = await get_collection("employees").find_one({"_id": employee_id})
+    if not emp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+    structure = await PayrollService.get_or_create_salary_structure(employee_id)
+    m = MONTH_NAMES.index(month_name) + 1
+    return {
+        "is_sales": bool(await sales_payroll.sales_user(emp.get("email"))),
+        "attendance": await sales_payroll.month_attendance(emp, year, m),
+        "incentive": await sales_payroll.month_incentive(emp, structure, year, m),
+    }
 
 @router.post("/calculate-bulk")
 async def calculate_bulk_payroll(

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { CalendarClock, RefreshCw, Settings2 } from 'lucide-react';
+import { StatCard } from '../../components/dashboard/StatCard';
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../lib/useApi';
 import { date, todayISO } from '../../lib/format';
@@ -17,6 +18,16 @@ import { Skeleton } from '../../components/common/Skeleton';
 import { Table, type Column } from '../../components/common/Table';
 import { useToast } from '../../components/common/ToastContext';
 import { PageHeader } from '../../components/layout/PageHeader';
+
+type Range = { from: string; to: string };
+const isoDay = (d: Date) => d.toLocaleDateString('en-CA');
+const shift = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return isoDay(d); };
+const PRESETS: { id: string; label: string; range: () => Range }[] = [
+  { id: 'today', label: 'Today', range: () => ({ from: shift(0), to: shift(0) }) },
+  { id: 'yesterday', label: 'Yesterday', range: () => ({ from: shift(-1), to: shift(-1) }) },
+  { id: 'week', label: 'This week', range: () => ({ from: shift(-((new Date().getDay() + 6) % 7)), to: shift(0) }) }, // Monday to today
+  { id: 'month', label: 'This month', range: () => ({ from: `${todayISO().slice(0, 7)}-01`, to: shift(0) }) },
+];
 
 const fmt12 = (t = '00:00') => {
   const [h, m] = t.split(':').map(Number);
@@ -104,17 +115,19 @@ function RulesModal({ cfg, onClose, onSaved }: { cfg: AttendanceConfig; onClose:
 
 export function HrAttendance() {
   const { can } = useAuth();
+  const [preset, setPreset] = useState<string>('today');
   const [day, setDay] = useState('');
-  const [month, setMonth] = useState('');
   const [employee, setEmployee] = useState('');
   const [editing, setEditing] = useState(false);
 
   const cfg = useApi(getAttendanceConfig);
-  const records = useApi(() => listAttendance({ date_str: day || undefined, month: month || undefined, employee_id: employee || undefined }), [day, month, employee]);
+  const range: Range | null = day ? { from: day, to: day } : PRESETS.find((p) => p.id === preset)?.range() ?? null;
+  const records = useApi(() => listAttendance({ date_from: range?.from, date_to: range?.to, employee_id: employee || undefined }), [range?.from, range?.to, employee]);
 
-  const pickDay = (v: string) => { setMonth(''); setDay(v); };
-  const thisMonth = () => { setDay(''); setMonth(todayISO().slice(0, 7)); };
-  const scope = day ? date(day) : month ? new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : 'All records';
+  const pickPreset = (id: string) => { setDay(''); setPreset(id); };
+  const pickDay = (v: string) => { setPreset(''); setDay(v); };
+  const scope = !range ? 'All records' : range.from === range.to ? date(range.from) : `${date(range.from)} – ${date(range.to)}`;
+  const sm = records.data?.summary;
 
   const columns: Column<AttendanceRecord>[] = [
     { key: 'emp', header: 'Employee', sortValue: (r) => r.employee_name ?? r.employee_id, render: (r) => <span><span className="block font-medium text-text">{r.employee_name || 'Employee'}</span><span className="block text-xs text-text-muted">{r.department || '—'} · {r.employee_id}</span></span> },
@@ -143,12 +156,19 @@ export function HrAttendance() {
         {cfg.status === 'error' ? <ErrorState compact onRetry={cfg.reload} message={cfg.error} /> : cfg.data ? <Policies cfg={cfg.data} /> : <div className="p-4"><Skeleton className="h-20" /></div>}
       </Card>
 
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <StatCard icon={CalendarClock} tone="success" label="Present" value={sm?.totals.PRESENT ?? '—'} hint={scope} />
+        <StatCard icon={CalendarClock} tone="warning" label="Late" value={sm?.totals.LATE ?? '—'} hint="Arrived after grace time" />
+        <StatCard icon={CalendarClock} tone="danger" label="Half day" value={sm?.totals.HALF_DAY ?? '—'} hint="Very late or early logout" />
+        <StatCard icon={CalendarClock} tone="danger" label="Absent" value={sm?.totals.ABSENT ?? '—'} hint="No punch, no leave" />
+        <StatCard icon={CalendarClock} tone="info" label="On leave" value={sm?.totals.ON_LEAVE ?? '—'} hint={sm ? `${sm.employees} employees in range` : undefined} />
+      </div>
+
       <Card>
         <Toolbar count={records.data ? `${records.data.data.length} records · ${scope}` : undefined}>
-          <Input aria-label="Date" type="date" value={day} onChange={(e) => pickDay(e.target.value)} inputClassName="w-40" />
-          <Button variant={day === todayISO() ? 'primary' : 'secondary'} size="sm" onClick={() => pickDay(todayISO())}>Today</Button>
-          <Button variant={month ? 'primary' : 'secondary'} size="sm" onClick={thisMonth}>This month</Button>
-          {(day || month) && <Button variant="ghost" size="sm" onClick={() => { setDay(''); setMonth(''); }}>Clear</Button>}
+          {PRESETS.map((p) => <Button key={p.id} variant={preset === p.id ? 'primary' : 'secondary'} size="sm" onClick={() => pickPreset(p.id)}>{p.label}</Button>)}
+          <Input aria-label="Pick a date" type="date" value={day} onChange={(e) => e.target.value && pickDay(e.target.value)} inputClassName="w-40" />
+          {(day || !preset) ? <Button variant="ghost" size="sm" onClick={() => { setDay(''); setPreset(''); }}>All time</Button> : null}
           <Select aria-label="Employee" value={employee} onChange={(e) => setEmployee(e.target.value)} selectClassName="w-56">
             <option value="">All employees</option>
             <EmployeeOptionList valueKey="employee_code" />
@@ -156,9 +176,20 @@ export function HrAttendance() {
         </Toolbar>
         {records.status === 'error' ? <ErrorState onRetry={records.reload} message={records.error} /> : (
           <Table caption="Attendance records" columns={columns} rows={records.data?.data ?? []} rowKey={(r) => r.id ?? `${r.employee_id}-${r.attendance_date}`} loading={records.loading}
-            empty={<EmptyState compact icon={CalendarClock} title="No attendance records" description={day || month || employee ? 'Nothing matches these filters.' : 'Punches will appear here as employees check in.'} />} />
+            empty={<EmptyState compact icon={CalendarClock} title="No attendance records" description={range || employee ? 'Nothing matches these filters.' : 'Punches will appear here as employees check in.'} />} />
         )}
       </Card>
+      {sm && sm.by_employee.length > 0 && range && range.from !== range.to && (
+        <Card className="mt-4">
+          <CardHeader title="Days counted per employee" description={scope} />
+          <Table caption="Attendance days per employee" rows={sm.by_employee} rowKey={(r) => String(r.employee_id)}
+            columns={[
+              { key: 'e', header: 'Employee', sortValue: (r) => r.employee_name ?? '', render: (r) => <span><span className="block font-medium text-text">{r.employee_name || 'Employee'}</span><span className="block text-xs text-text-muted">{r.department || '—'} · {r.employee_id}</span></span> },
+              ...(['PRESENT', 'LATE', 'HALF_DAY', 'ABSENT', 'ON_LEAVE'] as const).map((k) => ({ key: k, header: k === 'HALF_DAY' ? 'Half day' : k === 'ON_LEAVE' ? 'On leave' : k.charAt(0) + k.slice(1).toLowerCase(), align: 'right' as const, sortValue: (r: (typeof sm.by_employee)[number]) => Number(r[k] ?? 0), render: (r: (typeof sm.by_employee)[number]) => <span className="tabular-nums">{Number(r[k] ?? 0)}</span> })),
+              { key: 'h', header: 'Hours', align: 'right', sortValue: (r) => r.hours, render: (r) => <span className="tabular-nums">{r.hours} h</span> },
+            ]} />
+        </Card>
+      )}
       {editing && cfg.data && <RulesModal cfg={cfg.data} onClose={() => setEditing(false)} onSaved={cfg.reload} />}
     </>
   );

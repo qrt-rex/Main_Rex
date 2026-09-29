@@ -379,6 +379,8 @@ class PayrollRecordResponse(BaseModel):
     email_sent: bool = False
     email_sent_at: Optional[str] = None
     remarks: Optional[str] = None
+    incentive_details: Optional[Dict[str, Any]] = None
+    attendance_source: Optional[str] = None
     created_at: str
     updated_at: str
 

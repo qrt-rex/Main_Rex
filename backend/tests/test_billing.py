@@ -176,3 +176,95 @@ def test_billing_needs_permission(client, store, auth):
                                                   "role": "legal", "password": "Passw0rd!x"})
     legal = login(client, store, "legal1@rexera-test.com", "Passw0rd!x")
     assert client.get("/api/billing/invoices", headers=legal).status_code == 403
+
+
+REQ = {"billing_name": "Req Client", "billing_address": "1 Road, Surat", "branch_key": "baroda",
+       "items": [{"particulars": "Advisory", "quantity": 2, "rate": 500}]}
+
+
+def test_invoice_request_flow(client, store, auth):
+    from tests.conftest import login
+    client.post("/api/users", headers=auth, json={"username": "sales1", "email": "sales1@rexera-test.com",
+                                                  "role": "sales", "password": "Passw0rd!x"})
+    sales = login(client, store, "sales1@rexera-test.com", "Passw0rd!x")
+    r = client.post("/api/billing/requests", headers=sales, json=REQ)
+    assert r.status_code == 201, r.text
+    req = r.json()["request"]
+    assert req["estimated_total"] == 1000 and req["status"] == "pending" and req["request_number"].startswith("REQ-")
+    assert client.post("/api/billing/requests", headers=sales, json={**REQ, "items": []}).status_code == 422
+    assert client.post("/api/billing/requests", headers=sales, json={**REQ, "client_gstin": "bad"}).status_code == 422
+    # A requester sees only their own; a manager sees everyone's and reviews.
+    assert [x["id"] for x in client.get("/api/billing/requests", headers=sales).json()["items"]] == [req["id"]]
+    assert any(x["id"] == req["id"] for x in client.get("/api/billing/requests", headers=auth).json()["items"])
+    assert client.post(f"/api/billing/requests/{req['id']}/reject", headers=sales).status_code == 403
+    inv = invoice(client, auth).json()["invoice"]
+    ok = client.post(f"/api/billing/requests/{req['id']}/approve", headers=auth, json={"invoice_id": inv["id"]})
+    assert ok.status_code == 200 and ok.json()["request"]["invoice_number"] == inv["invoice_number"]
+    assert client.post(f"/api/billing/requests/{req['id']}/reject", headers=auth).status_code == 409
+    other = client.post("/api/billing/requests", headers=auth, json=REQ).json()["request"]
+    assert client.get(f"/api/billing/requests/{other['id']}", headers=sales).status_code == 404
+    assert client.post(f"/api/billing/requests/{other['id']}/reject", headers=auth).json()["request"]["status"] == "rejected"
+
+
+def test_documents(client, auth):
+    up = client.post("/api/billing/documents", headers=auth, files={"file": ("../rates.txt", b"hello", "text/plain")})
+    assert up.status_code == 201, up.text
+    doc = up.json()["document"]
+    assert doc["filename"] == "rates.txt" and doc["size"] == 5
+    assert any(d["id"] == doc["id"] for d in client.get("/api/billing/documents", headers=auth).json()["items"])
+    dl = client.get(f"/api/billing/documents/{doc['id']}/download", headers=auth)
+    assert dl.content == b"hello" and "attachment" in dl.headers["content-disposition"]
+    assert client.post("/api/billing/documents", headers=auth, files={"file": ("e.txt", b"", "text/plain")}).status_code == 422
+    assert client.delete(f"/api/billing/documents/{doc['id']}", headers=auth).status_code == 200
+    assert client.get(f"/api/billing/documents/{doc['id']}/download", headers=auth).status_code == 404
+
+
+def test_payment_reversal(client, auth):
+    inv = invoice(client, auth).json()["invoice"]
+    pay = client.post("/api/billing/payments", headers=auth, json={"invoice_id": inv["id"], "amount": 500}).json()["payment"]
+    assert client.get(f"/api/billing/invoices/{inv['id']}", headers=auth).json()["invoice"]["status"] == "partially_paid"
+    assert client.delete(f"/api/billing/payments/{pay['id']}", headers=auth).status_code == 200
+    after = client.get(f"/api/billing/invoices/{inv['id']}", headers=auth).json()["invoice"]
+    assert after["paid_amount"] == 0 and after["balance_amount"] == 1180 and after["status"] == "issued"
+    assert client.delete(f"/api/billing/payments/{pay['id']}", headers=auth).status_code == 404
+
+
+def test_exports_and_monthly_summary(client, auth):
+    invoice(client, auth, client={**INTRA, "name": "=cmd|evil"})
+    r = client.get("/api/billing/export/invoices.csv", headers=auth)
+    assert r.status_code == 200 and "text/csv" in r.headers["content-type"]
+    assert "'=cmd|evil" in r.text and ",=cmd" not in r.text  # formulas are neutralised
+    assert client.get("/api/billing/reports/gst-register.csv", headers=auth).status_code == 200
+    assert client.get("/api/billing/reports/gst-register.csv", headers=auth, params={"month": "bad"}).status_code == 422
+    months = client.get("/api/billing/reports/monthly", headers=auth).json()["items"]
+    assert months and months[0]["invoices"] >= 1 and months[0]["invoiced"] >= 1180
+
+
+def test_only_hr_issues_tax_invoices_sales_issue_proforma(client, store, auth):
+    from tests.conftest import login
+    for name, role in (("sales2", "sales"), ("hr2", "hr")):
+        r = client.post("/api/users", headers=auth, json={"username": name, "email": f"{name}@rexera-test.com",
+                                                          "role": role, "password": "Passw0rd!x"})
+        assert r.status_code in (200, 201), r.text
+    sales = login(client, store, "sales2@rexera-test.com", "Passw0rd!x")
+    hr = login(client, store, "hr2@rexera-test.com", "Passw0rd!x")
+
+    # Sales: proforma yes (create and edit), tax invoice no (create, edit, quotation conversion).
+    pro = invoice(client, sales, invoice_type="proforma")
+    assert pro.status_code == 201, pro.text
+    pid = pro.json()["invoice"]["id"]
+    assert client.put(f"/api/billing/invoices/{pid}", headers=sales, json={"notes": "edited"}).status_code == 200
+    denied = invoice(client, sales)
+    assert denied.status_code == 403 and "Only HR" in denied.json()["detail"]
+    assert invoice(client, sales, invoice_type="invoice").status_code == 403
+    tax_id = invoice(client, hr).json()["invoice"]["id"]
+    assert client.put(f"/api/billing/invoices/{tax_id}", headers=sales, json={"notes": "x"}).status_code == 403
+    q = client.post("/api/billing/quotations", headers=sales, json={"client": INTRA, "items": [{"name": "A", "quantity": 1, "unit_price": 100}]})
+    assert q.status_code == 201, q.text
+    assert client.post(f"/api/billing/quotations/{q.json()['quotation']['id']}/convert", headers=sales).status_code == 403
+    # Sales still cannot manage payments or delete.
+    assert client.delete(f"/api/billing/invoices/{pid}", headers=sales).status_code == 403
+
+    # HR: tax invoice yes, and can convert the quotation.
+    assert invoice(client, hr).status_code == 201
+    assert client.post(f"/api/billing/quotations/{q.json()['quotation']['id']}/convert", headers=hr).status_code == 200

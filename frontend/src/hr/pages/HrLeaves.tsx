@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarDays, CalendarPlus, Check, X } from 'lucide-reac
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../lib/useApi';
 import { date, todayISO } from '../../lib/format';
-import { applyLeave, decideLeave, leaveBalances, listLeaves, pendingLeaves, type LeaveRequest } from '../api';
+import { applyLeave, applyOwnLeave, decideLeave, leaveBalances, listLeaves, pendingLeaves, type LeaveRequest } from '../api';
 import { EmployeeOptionList, useEmployeeOptions } from '../HrSection';
 import { Badge, StatusBadge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
@@ -28,7 +28,9 @@ function Balances() {
   useEffect(() => {
     if (!emp && employees[0]) setEmp(employees[0].employee_code);
   }, [employees, emp]);
-  const bal = useApi(() => leaveBalances(emp), [emp], !!emp);
+  // Without the employee directory (e.g. sales) the server returns your own balances.
+  const ref = available ? emp : 'me';
+  const bal = useApi(() => leaveBalances(ref), [ref], !!ref);
   const b = bal.data?.balances;
   const tiles: [string, number | undefined, string][] = [
     ['Casual leave', b?.casual_leave.available, 'available'],
@@ -46,7 +48,7 @@ function Balances() {
           </Select>
         )}
       />
-      {!available ? <p className="p-4 text-sm text-text-muted">Viewing balances requires access to the employee directory.</p> : bal.status === 'error' ? <ErrorState compact onRetry={bal.reload} message={bal.error} /> : (
+      {bal.status === 'error' ? <ErrorState compact onRetry={bal.reload} message={bal.error} /> : (
         <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
           {tiles.map(([label, value, hint]) => (
             <div key={label} className="rounded-md border border-border p-3">
@@ -61,7 +63,10 @@ function Balances() {
   );
 }
 
-function ApplyModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+const LEVEL_LABEL = { HR: 'HR', ADMIN: 'Admin', SUPERADMIN: 'Super Admin' } as const;
+
+/** own: request your own leave (no employee picker); otherwise HR files it on behalf of an employee. */
+function ApplyModal({ own, onClose, onDone }: { own?: boolean; onClose: () => void; onDone: () => void }) {
   const { showToast } = useToast();
   const { employees } = useEmployeeOptions();
   const [v, setV] = useState({ employee_id: employees[0]?.employee_code ?? '', leave_type: 'CL', duration_type: 'FULL_DAY', start_date: todayISO(), end_date: todayISO(), reason: '', medical_certificate_url: '' });
@@ -73,7 +78,7 @@ function ApplyModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const er: Record<string, string> = {};
-    if (!v.employee_id) er.employee_id = 'Choose an employee.';
+    if (!own && !v.employee_id) er.employee_id = 'Choose an employee.';
     if (!v.start_date) er.start_date = 'Choose a start date.';
     if (!v.end_date || v.end_date < v.start_date) er.end_date = 'End date must be on or after the start date.';
     if (!v.reason.trim()) er.reason = 'State the reason for leave.';
@@ -82,8 +87,12 @@ function ApplyModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
     if (Object.keys(er).length) return;
     setSaving(true);
     try {
-      await applyLeave({ ...v, reason: v.reason.trim(), medical_certificate_url: v.medical_certificate_url || null });
-      showToast('Leave application submitted', 'success');
+      const body = { ...v, reason: v.reason.trim(), medical_certificate_url: v.medical_certificate_url || null };
+      if (own) showToast((await applyOwnLeave(body)).message, 'success');
+      else {
+        await applyLeave(body);
+        showToast('Leave application submitted', 'success');
+      }
       onDone();
       onClose();
     } catch (err) {
@@ -94,12 +103,14 @@ function ApplyModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   };
 
   return (
-    <Modal open onClose={onClose} size="lg" closeOnOverlay={false} title="Apply for leave" description="Submitted on behalf of an employee; it enters the approval queue."
+    <Modal open onClose={onClose} size="lg" closeOnOverlay={false} title={own ? 'Request leave' : 'Apply for leave'} description={own ? 'HR approves staff and sales leave; HR leave goes to an Admin, Admin leave to the Super Admin.' : 'Submitted on behalf of an employee; it enters the approval queue.'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="leave-form" loading={saving}>Submit application</Button></>}>
       <form id="leave-form" onSubmit={submit} noValidate className="grid gap-4 sm:grid-cols-2">
-        <Select label="Employee" required value={v.employee_id} onChange={set('employee_id')} error={errors.employee_id} className="sm:col-span-2">
-          <EmployeeOptionList valueKey="employee_code" />
-        </Select>
+        {!own && (
+          <Select label="Employee" required value={v.employee_id} onChange={set('employee_id')} error={errors.employee_id} className="sm:col-span-2">
+            <EmployeeOptionList valueKey="employee_code" />
+          </Select>
+        )}
         <Select label="Leave type" required value={v.leave_type} onChange={set('leave_type')}>
           {LEAVE_TYPES.map(([id, label]) => <option key={id} value={id}>{label} ({id})</option>)}
         </Select>
@@ -155,7 +166,7 @@ export function HrLeaves() {
   const { can } = useAuth();
   const { showToast } = useToast();
   const [tab, setTab] = useState('pending');
-  const [applying, setApplying] = useState(false);
+  const [applying, setApplying] = useState<'own' | 'behalf' | null>(null);
   const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
   const [approving, setApproving] = useState<string | null>(null);
 
@@ -187,6 +198,7 @@ export function HrLeaves() {
         ? <span className="inline-flex items-start gap-1.5 text-xs text-warning"><AlertTriangle size={13} className="mt-px shrink-0" aria-hidden="true" /><span>{r.conflict_warning.conflict_count} away: {r.conflict_warning.conflicting_colleagues.map((c) => c.employee_name).join(', ')}</span></span>
         : <span className="text-xs text-success">No conflict</span>,
     },
+    { key: 'level', header: 'Approver', render: (r) => <Badge tone="neutral">{LEVEL_LABEL[r.approval_level ?? 'HR']}</Badge> },
     { key: 'reason', header: 'Reason', className: 'max-w-48', render: (r) => <span className="line-clamp-2 text-text-secondary">{r.reason}</span> },
     ...(can('hr.leave.approve') ? [{
       key: 'actions', header: <span className="sr-only">Decision</span>, align: 'right' as const,
@@ -206,6 +218,7 @@ export function HrLeaves() {
     { key: 'days', header: 'Days', align: 'right', sortValue: (r) => r.total_days, render: (r) => r.total_days },
     { key: 'status', header: 'Status', sortValue: (r) => r.status, render: (r) => <StatusBadge status={r.status} /> },
     { key: 'lop', header: 'Pay', render: (r) => r.is_loss_of_pay ? <span className="text-danger">{r.lop_days} LOP days</span> : <span className="text-text-muted">Paid</span> },
+    { key: 'level', header: 'Approver', render: (r) => LEVEL_LABEL[r.approval_level ?? 'HR'] },
     { key: 'by', header: 'Decided by', render: (r) => r.action_by_name || '—' },
     { key: 'applied', header: 'Applied', sortValue: (r) => r.created_at ?? '', render: (r) => <span className="whitespace-nowrap text-text-muted">{date(r.created_at?.slice(0, 10))}</span> },
   ];
@@ -215,9 +228,12 @@ export function HrLeaves() {
     <>
       <PageHeader
         title="Leave"
-        description="Balances, approvals and leave history."
+        description="Balances, approvals and leave history. Sales leave goes to HR, HR leave to an Admin, Admin leave to the Super Admin."
         breadcrumbs={[{ label: 'HR' }, { label: 'Leave' }]}
-        actions={can('hr.leave.apply') && <Button onClick={() => setApplying(true)}><CalendarPlus size={15} /> Apply for leave</Button>}
+        actions={<>
+          <Button variant={can('hr.leave.apply') ? 'secondary' : 'primary'} onClick={() => setApplying('own')}><CalendarPlus size={15} /> Request my leave</Button>
+          {can('hr.leave.apply') && <Button onClick={() => setApplying('behalf')}><CalendarPlus size={15} /> Apply for an employee</Button>}
+        </>}
       />
       <Balances />
       <Card>
@@ -235,7 +251,7 @@ export function HrLeaves() {
           />
         )}
       </Card>
-      {applying && <ApplyModal onClose={() => setApplying(false)} onDone={reload} />}
+      {applying && <ApplyModal own={applying === 'own'} onClose={() => setApplying(null)} onDone={reload} />}
       {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={reload} />}
     </>
   );

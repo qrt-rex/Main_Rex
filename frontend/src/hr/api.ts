@@ -169,8 +169,14 @@ export interface AttendanceConfig {
   hr_notification_email: string;
   [key: string]: unknown;
 }
-export const listAttendance = (p: { date_str?: string; month?: string; employee_id?: string }) =>
-  api.get<{ data: AttendanceRecord[] }>('/api/attendance', p);
+export interface AttendanceSummary {
+  records: number;
+  employees: number;
+  totals: Record<string, number>;
+  by_employee: { employee_id: string; employee_name?: string; department?: string; hours: number; [status: string]: string | number | undefined }[];
+}
+export const listAttendance = (p: { date_str?: string; month?: string; date_from?: string; date_to?: string; employee_id?: string }) =>
+  api.get<{ data: AttendanceRecord[]; summary: AttendanceSummary }>('/api/attendance', p);
 export const getAttendanceConfig = () => api.get<AttendanceConfig>('/api/attendance/config');
 export const saveAttendanceConfig = (cfg: AttendanceConfig) => api.put('/api/attendance/config', cfg);
 
@@ -190,6 +196,8 @@ export interface LeaveRequest {
   is_loss_of_pay?: boolean;
   lop_days?: number;
   action_by_name?: string;
+  approval_level?: 'HR' | 'ADMIN' | 'SUPERADMIN';
+  applicant_role?: string;
   created_at?: string;
   conflict_warning?: { has_conflict: boolean; conflict_count: number; conflicting_colleagues: { employee_name: string }[] };
   balances?: { casual_leave_available: number; sick_leave_available: number; earned_leave_available: number };
@@ -206,6 +214,8 @@ export const listLeaves = () => api.get<{ data: LeaveRequest[] }>('/api/leaves')
 export const pendingLeaves = () => api.get<{ data: LeaveRequest[] }>('/api/leaves/pending-dashboard');
 export const leaveBalances = (employeeId: string) => api.get<LeaveBalances>(`/api/leaves/balances/${encodeURIComponent(employeeId)}`);
 export const applyLeave = (body: Record<string, unknown>) => api.post('/api/leaves/apply', body);
+/** Your own leave: goes to HR (staff, sales), Admin (HR's) or Super Admin (an admin's). */
+export const applyOwnLeave = (body: Record<string, unknown>) => api.post<{ message: string }>('/api/leaves/apply-own', body);
 export const decideLeave = (leave_request_id: string, action: 'APPROVE' | 'REJECT', remarks: string) =>
   api.post('/api/leaves/decision', { leave_request_id, action, remarks });
 
@@ -353,6 +363,15 @@ export const listSlips = (month: string, year: number) => api.get<{ slips: Salar
 export const deleteSlip = (id: string) => api.delete(`/api/payroll/slip/${id}`);
 export const calculateSalary = (body: Record<string, unknown>) => api.post<SalaryCalc>('/api/payroll/calculate-salary', body);
 export const generateSlip = (body: Record<string, unknown>) => api.post<SalarySlip>('/api/payroll/generate-slip', body);
+
+/** Sales staff: attendance from Start/End Day and the collection incentive payroll will use. */
+export interface SalesPayrollPreview {
+  is_sales: boolean;
+  attendance: { working_days: number; full_days: number; half_days: number; absent_days: number; paid_leave_days: number; unpaid_leave_days: number; late_count: number; missed_end_day: number } | null;
+  incentive: { monthly_salary: number; collection: number; gate_amount: number; target_amount: number; mode: string; slab_percent: number | null; daily_incentive: number; weekly_incentive: number; monthly_incentive: number; incentive: number; note: string } | null;
+}
+export const salesPayrollPreview = (employee_id: string, month: string, year: number) =>
+  api.get<SalesPayrollPreview>('/api/payroll/sales-preview', { employee_id, month, year });
 
 // ---------- Advances, loans, bonuses, overtime ----------
 export interface Advance { id: string; advance_id: string; employee_name: string; employee_code: string; department: string; request_date: string; advance_amount: number; monthly_deduction_amount: number; paid_amount: number; remaining_balance: number; status: string }

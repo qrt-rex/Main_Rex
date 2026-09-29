@@ -61,7 +61,7 @@ class LeaveBalance(BaseModel):
 
 
 class LeaveApplicationRequest(BaseModel):
-    employee_id: str
+    employee_id: str = ""  # ignored by /apply-own, which uses the caller's own record
     leave_type: LeaveTypeEnum
     start_date: str  # YYYY-MM-DD
     end_date: str    # YYYY-MM-DD
@@ -113,6 +113,8 @@ class LeaveRequest(BaseModel):
     paid_leave_days: float = 0.0
     
     status: LeaveStatus = LeaveStatus.PENDING
+    applicant_role: str = ""
+    approval_level: str = "HR"  # who must decide: HR (staff, sales), ADMIN (HR's own leave), SUPERADMIN (an admin's)
     action_by_id: Optional[str] = None
     action_by_name: Optional[str] = None
     action_timestamp: Optional[datetime] = None

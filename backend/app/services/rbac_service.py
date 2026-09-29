@@ -96,7 +96,8 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
     ]),
     ("billing", "Billing & Invoicing", [
         ("billing.view", "View invoices, quotations & billing dashboard"),
-        ("billing.create", "Create & edit invoices and quotations"),
+        ("billing.create", "Create & edit proforma invoices and quotations"),
+        ("billing.tax_invoice", "Issue & edit tax invoices (without it, only proforma invoices)"),
         ("billing.manage", "Manage billing clients, payments & settings"),
     ]),
     ("administration", "Administration", [
@@ -125,13 +126,13 @@ _BILLING_ALL = ["billing.view", "billing.create", "billing.manage"]
 # Existing `hr` accounts had unrestricted access in the standalone Rexera-HR app, so they
 # keep every HR capability by default; a Super Admin can narrow this in Roles & Permissions.
 DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
-    "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view",
+    "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
               "sales.hub.manage"],
-    "hr": [*_HR_ALL, *_BILLING_ALL, "automations.manage", "documents.submit"],
+    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage"],
-    "sales": [*_SALES_ALL, "sales.hub.manage", "clients.view", "billing.view", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
+    "sales": [*_SALES_ALL, "sales.hub.manage", "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
            "users.manage", "audit.view"],
     "support": ["support.desk.view", "clients.view", "sales.customers.view", "sales.contacts.view",
@@ -219,6 +220,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/leaves/balances/{employee_id}"): "hr.leave.view",
     ("POST", "/api/leaves/apply"): "hr.leave.apply",
     ("POST", "/api/leaves/decision"): "hr.leave.approve",
+    ("POST", "/api/leaves/apply-own"): AUTHENTICATED,  # anyone requests their own leave; routing decides who approves
     # Productivity
     ("GET", "/api/productivity/clients"): "hr.productivity.view",
     ("GET", "/api/productivity/projects"): "hr.productivity.view",
@@ -258,6 +260,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/payroll/slip/{slip_id}/printable"): "hr.payroll.view",
     ("GET", "/api/payroll/summary"): "hr.payroll.view",
     ("POST", "/api/payroll/calculate-salary"): "hr.payroll.view",
+    ("GET", "/api/payroll/sales-preview"): "hr.payroll.view",
     ("PUT", "/api/payroll/salary-structures/{employee_id}"): "hr.payroll.process",
     ("POST", "/api/payroll/calculate"): "hr.payroll.process",
     ("POST", "/api/payroll/calculate-bulk"): "hr.payroll.process",
@@ -325,9 +328,23 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/billing/reports/gstr1"): "billing.view",
     ("GET", "/api/billing/reports/aging"): "billing.view",
     ("GET", "/api/billing/branches"): "billing.view",
+    ("GET", "/api/billing/sales-people"): "billing.view",
     ("GET", "/api/billing/settings"): "billing.view",
     ("PUT", "/api/billing/settings"): "billing.manage",
     ("GET", "/api/billing/export/zip"): "billing.view",
+    ("GET", "/api/billing/requests"): "billing.view",
+    ("POST", "/api/billing/requests"): "billing.view",
+    ("GET", "/api/billing/requests/{request_id}"): "billing.view",
+    ("POST", "/api/billing/requests/{request_id}/approve"): "billing.manage",
+    ("POST", "/api/billing/requests/{request_id}/reject"): "billing.manage",
+    ("GET", "/api/billing/documents"): "billing.view",
+    ("POST", "/api/billing/documents"): "billing.manage",
+    ("GET", "/api/billing/documents/{document_id}/download"): "billing.view",
+    ("DELETE", "/api/billing/documents/{document_id}"): "billing.manage",
+    ("DELETE", "/api/billing/payments/{payment_id}"): "billing.manage",
+    ("GET", "/api/billing/export/invoices.csv"): "billing.view",
+    ("GET", "/api/billing/reports/gst-register.csv"): "billing.view",
+    ("GET", "/api/billing/reports/monthly"): "billing.view",
     # Legal Records & Compliance
     ("GET", "/api/legal/records"): "legal.view",
     ("POST", "/api/legal/records"): "legal.view",

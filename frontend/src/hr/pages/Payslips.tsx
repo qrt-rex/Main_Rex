@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useApi, useDebounced } from '../../lib/useApi';
 import { currentMonth, currentYear, money, MONTHS } from '../../lib/format';
 import { exportCsv } from '../../lib/spreadsheet';
-import { calculateSalary, deleteSlip, generateSlip, listSlips, salarySummary, type SalaryCalc, type SalarySlip } from '../api';
+import { calculateSalary, deleteSlip, generateSlip, listSlips, salarySummary, salesPayrollPreview, type SalaryCalc, type SalesPayrollPreview, type SalarySlip } from '../api';
 import { EmployeeOptionList, useEmployeeOptions } from '../HrSection';
 import { PayslipPreview, Toolbar } from '../components';
 import { Button } from '../../components/common/Button';
@@ -107,6 +107,23 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV((s) => ({ ...s, [k]: e.target.value }));
   const emp = employees.find((e) => e.id === v.employee_id);
   const inputs = useDebounced(v, 250);
+  const [sales, setSales] = useState<SalesPayrollPreview | null>(null);
+
+  // Sales staff: fill the days from their Start/End Day punches; the incentive is added by the server.
+  useEffect(() => {
+    if (!v.employee_id || Number(v.year) < 2000) return;
+    let cancelled = false;
+    salesPayrollPreview(v.employee_id, v.month, Number(v.year)).then((p) => {
+      if (cancelled) return;
+      setSales(p);
+      const a = p.attendance;
+      if (a) {
+        const lop = a.absent_days + a.unpaid_leave_days + a.half_days * 0.5;
+        setV((s) => ({ ...s, working_days: String(a.working_days), lop_days: String(lop), paid_days: String(a.working_days - lop) }));
+      }
+    }).catch(() => !cancelled && setSales(null));
+    return () => { cancelled = true; };
+  }, [v.employee_id, v.month, v.year]);
 
   useEffect(() => {
     if (!emp) {
@@ -116,11 +133,11 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
     let cancelled = false;
     calculateSalary({
       base_salary: emp.base_salary, hra: emp.hra, conveyance_allowance: emp.conveyance_allowance, special_allowance: emp.special_allowance,
-      pf_opted: emp.pf_opted, professional_tax: emp.professional_tax || 200, bonus: Number(inputs.bonus) || 0,
+      pf_opted: emp.pf_opted, professional_tax: emp.professional_tax || 200, bonus: (Number(inputs.bonus) || 0) + (sales?.incentive?.incentive ?? 0),
       other_deductions: Number(inputs.other_deductions) || 0, working_days: Number(inputs.working_days) || 30, lop_days: Number(inputs.lop_days) || 0,
     }).then((c) => !cancelled && setCalc(c)).catch(() => !cancelled && setCalc(null));
     return () => { cancelled = true; };
-  }, [emp, inputs]);
+  }, [emp, inputs, sales]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -162,6 +179,25 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
         </div>
       </Card>
       <div className="space-y-4">
+        {sales?.is_sales && v.employee_id && (
+          <Card>
+            <CardHeader title="Sales attendance & incentive" description="From Start/End Day and client collections" />
+            <dl className="divide-y divide-border text-sm">
+              {sales.attendance && ([['Full days', sales.attendance.full_days], ['Half days', sales.attendance.half_days], ['Absent', sales.attendance.absent_days],
+                ['Leave (paid / unpaid)', `${sales.attendance.paid_leave_days} / ${sales.attendance.unpaid_leave_days}`], ['Late marks', sales.attendance.late_count]] as const).map(([k, n]) => (
+                <div key={k} className="flex justify-between px-4 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{n}</dd></div>
+              ))}
+              {sales.incentive && (
+                <>
+                  <div className="flex justify-between px-4 py-2"><dt className="text-text-muted">Collected this month</dt><dd className="tabular-nums text-text">{money(sales.incentive.collection)}</dd></div>
+                  <div className="flex justify-between px-4 py-2"><dt className="text-text-muted">Target (salary ×4)</dt><dd className="tabular-nums text-text">{money(sales.incentive.target_amount)}</dd></div>
+                  <div className="flex justify-between px-4 py-2 font-medium"><dt className="text-text">Sales incentive</dt><dd className="tabular-nums text-success">{money(sales.incentive.incentive)}</dd></div>
+                </>
+              )}
+            </dl>
+            {sales.incentive && <p className="px-4 py-3 text-xs text-text-muted">{sales.incentive.note}</p>}
+          </Card>
+        )}
         <Card className="lg:sticky lg:top-20">
           <CardHeader title="Calculation" description={emp ? emp.full_name : 'Choose an employee to preview'} />
           {emp ? (

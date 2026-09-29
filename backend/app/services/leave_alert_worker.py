@@ -1,7 +1,7 @@
 import asyncio
 import html
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from app.services.email_service import EmailService
 
 logger = logging.getLogger("rexera.leave.alerts")
@@ -11,7 +11,8 @@ class LeaveAlertWorker:
     @staticmethod
     async def send_new_leave_application_alert(
         leave_request: Dict[str, Any],
-        conflict_info: Dict[str, Any]
+        conflict_info: Dict[str, Any],
+        recipients: Optional[List[str]] = None
     ):
         try:
             esc = lambda v: html.escape(str(v if v is not None else ""))
@@ -59,12 +60,9 @@ class LeaveAlertWorker:
             </div>
             """
 
-            await EmailService.send_custom_email(
-                recipient_email=manager_email,
-                subject=subject,
-                html_body=body
-            )
-            logger.info(f"Leave request alert dispatched to manager: {manager_email}")
+            for to in (recipients or [manager_email]):
+                await EmailService.send_custom_email(recipient_email=to, subject=subject, html_body=body)
+            logger.info(f"Leave request alert dispatched to: {recipients or [manager_email]}")
         except Exception as e:
             logger.error(f"Error dispatching leave application alert: {e}")
 

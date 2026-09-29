@@ -9,7 +9,7 @@ import { useToast } from '../components/common/ToastContext';
 import { useConfirm } from '../components/common/ConfirmDialog';
 import { Card } from '../components/common/Card';
 import { StatCard } from '../components/dashboard/StatCard';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, saveBlob } from '../lib/api';
 import { money, todayISO } from '../lib/format';
 import { openBillingPdf } from './pdf';
 
@@ -266,6 +266,13 @@ export function InvoicesList() {
             className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary hover:bg-surface-secondary"
           >
             <RefreshCw size={13} /> Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => api.blob('/api/billing/export/invoices.csv').then((b) => saveBlob(b, 'invoices.csv')).catch((err) => showToast(err instanceof ApiError ? err.message : 'Export failed', 'error'))}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary hover:bg-surface-secondary"
+          >
+            <Download size={13} /> Export CSV
           </button>
         </form>
       </Card>

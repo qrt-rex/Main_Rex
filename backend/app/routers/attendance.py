@@ -14,12 +14,32 @@ from app.database import get_collection, fix_ids, fix_id
 
 router = APIRouter(prefix="/api/attendance", tags=["Attendance & Time Tracking"])
 
+STATUSES = ("PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE", "HOLIDAY", "WEEK_OFF")
+
+
+def summarise(docs) -> Dict[str, Any]:
+    """Days counted per status, overall and per employee, for whatever range was asked for."""
+    totals = {s: 0 for s in STATUSES}
+    people: Dict[str, Dict[str, Any]] = {}
+    for d in docs:
+        s = d.get("status") if d.get("status") in totals else None
+        p = people.setdefault(d.get("employee_id") or "?", {"employee_id": d.get("employee_id"), "employee_name": d.get("employee_name"),
+                                                              "department": d.get("department"), "hours": 0.0, **{k: 0 for k in STATUSES}})
+        if s:
+            totals[s] += 1
+            p[s] += 1
+        p["hours"] = round(p["hours"] + float(d.get("total_work_hours") or 0), 2)
+    return {"records": len(docs), "employees": len(people), "totals": totals,
+            "by_employee": sorted(people.values(), key=lambda p: (p.get("employee_name") or "").lower())}
+
 
 @router.get("", status_code=status.HTTP_200_OK)
 @router.get("/", status_code=status.HTTP_200_OK)
 async def list_attendance_records(
     date_str: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    date_from: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     employee_id: Optional[str] = None,
     limit: int = Query(500, ge=1, le=5000),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -29,6 +49,10 @@ async def list_attendance_records(
     filter_q: Dict[str, Any] = {}
     if date_str:
         filter_q["attendance_date"] = date_str
+    elif date_from or date_to:  # inclusive range: today, yesterday, this week...
+        if date_from and date_to and date_to < date_from:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The end date is before the start date.")
+        filter_q["attendance_date"] = {**({"$gte": date_from} if date_from else {}), **({"$lte": date_to} if date_to else {})}
     elif month:
         filter_q["attendance_date"] = {"$regex": f"^{month}-"}
     if employee_id:
@@ -36,7 +60,7 @@ async def list_attendance_records(
 
     total = await att_col.count_documents(filter_q)
     docs = await att_col.find(filter_q).sort("attendance_date", -1).to_list(limit)
-    return {"success": True, "count": len(docs), "total": total, "data": fix_ids(docs)}
+    return {"success": True, "count": len(docs), "total": total, "data": fix_ids(docs), "summary": summarise(docs)}
 
 
 @router.post("/punch-in", status_code=status.HTTP_200_OK)

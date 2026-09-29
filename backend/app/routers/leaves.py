@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query, status
 from typing import Dict, Any, List, Optional
 
@@ -6,7 +7,8 @@ from app.schemas.leave import (
     LeaveDecisionRequest,
     LeaveBalance,
 )
-from app.services.leave_service import LeaveService
+from app.services.leave_service import LeaveService, LEVEL_LABEL
+from app.services.rbac_service import get_role_permissions, normalize_role
 from app.services.leave_alert_worker import LeaveAlertWorker
 from app.services.auth_service import get_current_user
 from app.database import get_collection, fix_ids
@@ -14,12 +16,36 @@ from app.database import get_collection, fix_ids
 router = APIRouter(prefix="/api/leaves", tags=["Leave Management"])
 
 
+async def _is_approver(user: Dict[str, Any]) -> bool:
+    return "hr.leave.approve" in await get_role_permissions(user.get("role"))
+
+
+async def _own_employee(user: Dict[str, Any]) -> Dict[str, Any]:
+    email = str(user.get("email") or "").strip()
+    emps = await get_collection("employees").find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}).to_list(2) if email else []
+    if not emps:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No employee record is linked to your login email, so leave can't be requested. Ask HR to add it.")
+    return emps[0]
+
+
+async def _alert_recipients(leave: Dict[str, Any]) -> Optional[List[str]]:
+    """HR-level requests go to the manager address (HR mailbox); HR's own leave goes to every active Admin / Super Admin."""
+    if leave.get("approval_level", "HR") == "HR":
+        return None
+    allowed = {"admin", "superadmin"} if leave["approval_level"] == "ADMIN" else {"superadmin"}
+    accounts = await get_collection("admins").find({}).to_list(2000)
+    return sorted({a["email"] for a in accounts if a.get("email") and a.get("is_active", True) and normalize_role(a.get("role")) in allowed}) or None
+
+
 @router.get("", status_code=status.HTTP_200_OK)
 @router.get("/", status_code=status.HTTP_200_OK)
 async def list_all_leaves(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """List all leave applications."""
+    """All leave applications for approvers; everyone else sees only their own."""
     leave_col = get_collection("leave_requests")
     docs = await leave_col.find({}).sort("created_at", -1).to_list(500)
+    if not await _is_approver(current_user):
+        me = str(current_user.get("email") or "").strip().lower()
+        docs = [d for d in docs if me and str(d.get("employee_email") or "").strip().lower() == me]
     return {"success": True, "count": len(docs), "data": fix_ids(docs)}
 
 
@@ -29,28 +55,46 @@ async def apply_for_leave(
     background_tasks: BackgroundTasks,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
+    return await _submit(payload, background_tasks)
+
+
+async def _submit(payload: LeaveApplicationRequest, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     try:
         res = await LeaveService.apply_leave(payload)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
 
+    leave = res["leave_request"]
     background_tasks.add_task(
         LeaveAlertWorker.send_new_leave_application_alert,
-        leave_request=res["leave_request"],
-        conflict_info=res["conflict_info"]
+        leave_request=leave,
+        conflict_info=res["conflict_info"],
+        recipients=await _alert_recipients(leave)
     )
 
     return {
         "success": True,
-        "message": "Leave application submitted successfully.",
-        "data": res["leave_request"],
+        "message": f"Leave application submitted; it goes to {LEVEL_LABEL.get(leave.get('approval_level'), 'HR')} for approval.",
+        "data": leave,
         "conflict_info": res["conflict_info"]
     }
 
 
+@router.post("/apply-own", status_code=status.HTTP_201_CREATED)
+async def apply_for_own_leave(
+    payload: LeaveApplicationRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Request your own leave (sales, staff, HR, admin): routed to HR, or to Admin / Super Admin for HR / Admin staff."""
+    emp = await _own_employee(current_user)
+    payload.employee_id = emp.get("employee_code") or emp.get("employee_id") or str(emp["_id"])
+    return await _submit(payload, background_tasks)
+
+
 @router.get("/pending-dashboard", status_code=status.HTTP_200_OK)
 async def get_hr_pending_leaves(current_user: Dict[str, Any] = Depends(get_current_user)):
-    items = await LeaveService.get_hr_pending_leaves_dashboard()
+    items = await LeaveService.get_hr_pending_leaves_dashboard(current_user.get("role"), current_user.get("email") or "")
     return {"success": True, "count": len(items), "data": items}
 
 
@@ -84,7 +128,10 @@ async def get_employee_leave_balances(
     year: Optional[int] = Query(None, ge=2000, le=2100),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    # Balances are keyed by employee code; accept a record id too.
+    # Balances are keyed by employee code; accept a record id too. "me" (and anyone who can't approve leave) gets their own.
+    if employee_id == "me" or not await _is_approver(current_user):
+        own = await _own_employee(current_user)
+        employee_id = own.get("employee_code") or own.get("employee_id") or str(own["_id"])
     emp = await LeaveService.resolve_employee(employee_id)
     if emp:
         employee_id = emp.get("employee_code") or emp.get("employee_id") or str(emp.get("_id"))

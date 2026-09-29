@@ -1,6 +1,6 @@
 import {
   Banknote, BarChart3, Briefcase, CalendarClock, CalendarDays, Contact, FileSpreadsheet,
-  FileText, FolderKanban, GraduationCap, Handshake, HandCoins, LayoutDashboard, LineChart, Megaphone,
+  FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, LayoutDashboard, LineChart, Megaphone,
   PlusCircle, ScrollText, Scale, ShieldCheck, SlidersHorizontal, Target, TrendingUp, Upload, UserPlus,
   Users, UsersRound, Wallet, Workflow,
 } from 'lucide-react';
@@ -62,10 +62,12 @@ export const sections: NavSection[] = [
     items: [
       { id: 'billing-invoices', label: 'Invoices', path: '/billing/invoices', icon: FileText, permission: 'billing.view', description: 'Search, filter and manage tax invoices' },
       { id: 'billing-create', label: 'Create Invoice', path: '/billing/create', icon: PlusCircle, permission: 'billing.create', description: 'GST compliant tax invoice generator' },
+      { id: 'billing-requests', label: 'Invoice Requests', path: '/billing/requests', icon: Inbox, permission: 'billing.view', description: 'Request, approve and reject invoices' },
       { id: 'billing-quotations', label: 'Quotations', path: '/billing/quotations', icon: ScrollText, permission: 'billing.view', description: 'Draft, send and convert quotations' },
       { id: 'billing-clients', label: 'Billing Clients', path: '/billing/clients', icon: Users, permission: 'billing.manage', description: 'Customer CRM directory and GSTIN lookup' },
       { id: 'billing-payments', label: 'Payments', path: '/billing/payments', icon: Banknote, permission: 'billing.manage', description: 'Collections and receivables tracker' },
       { id: 'billing-reports', label: 'Billing Reports', path: '/billing/reports', icon: BarChart3, permission: 'billing.view', description: 'Financial, GSTR-1 and aging reports' },
+      { id: 'billing-documents', label: 'Billing Documents', path: '/billing/documents', icon: FolderOpen, permission: 'billing.view', description: 'Shared rate cards, brochures and templates' },
     ],
   },
   {

@@ -25,6 +25,7 @@ KNOWN_COLLECTIONS = [
     "project_tasks", "projects", "report_jobs", "salary_advances", "salary_slips",
     "salary_structures", "timesheets", "activity_logs", "role_permissions",
     "billing_invoices", "billing_quotations", "billing_clients", "billing_products",
+    "billing_requests", "billing_documents", "billing_document_files",
     "billing_payments", "billing_branches", "billing_settings", "billing_counters",
     "legal_records", "automations", "automation_runs", "client_documents", "client_document_files",
     "sales_leads", "sales_calls", "sales_schemes", "sales_materials", "sales_material_files", "sales_day_sessions",
