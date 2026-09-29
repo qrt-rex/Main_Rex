@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MoreHorizontal, Pencil, Power, UserPlus, Users as UsersIcon } from 'lucide-react';
+import { KeyRound, MoreHorizontal, Pencil, Power, UserPlus, Users as UsersIcon } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { dateTime } from '../lib/format';
@@ -18,8 +18,9 @@ import { Modal } from '../components/common/Modal';
 import { Table, type Column } from '../components/common/Table';
 import { useToast } from '../components/common/ToastContext';
 import { PageHeader } from '../components/layout/PageHeader';
+import { UserAccessModal } from '../components/permissions/UserAccessModal';
 
-interface Account { id: string; username: string; email: string; role: string; is_active: boolean; last_login: string | null; created_at: string | null }
+interface Account { id: string; username: string; email: string; role: string; extra_roles?: string[]; grants?: string[]; denies?: string[]; is_active: boolean; last_login: string | null; created_at: string | null }
 interface Role { id: string; label: string }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -92,9 +93,10 @@ function UserForm({ open, onClose, roles, account, onSaved }: {
 }
 
 export function Users() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { showToast } = useToast();
   const confirm = useConfirm();
+  const [accessFor, setAccessFor] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get('q') ?? '');
   const [roleFilter, setRoleFilter] = useState('');
@@ -150,7 +152,13 @@ export function Users() {
         </span>
       ),
     },
-    { key: 'role', header: 'Role', sortValue: (a) => roleLabel(a.role), render: (a) => <Badge tone={a.role === 'superadmin' ? 'primary' : 'neutral'}>{roleLabel(a.role)}</Badge> },
+    { key: 'role', header: 'Role', sortValue: (a) => roleLabel(a.role), render: (a) => (
+      <span className="flex flex-wrap items-center gap-1">
+        <Badge tone={a.role === 'superadmin' ? 'primary' : 'neutral'}>{roleLabel(a.role)}</Badge>
+        {(a.extra_roles ?? []).map((r) => <Badge key={r} tone="info">+ {roleLabel(r)}</Badge>)}
+        {((a.grants?.length ?? 0) + (a.denies?.length ?? 0)) > 0 && <Badge tone="warning">Custom access</Badge>}
+      </span>
+    ) },
     { key: 'status', header: 'Status', sortValue: (a) => (a.is_active ? 0 : 1), render: (a) => <Badge tone={a.is_active ? 'success' : 'neutral'} dot>{a.is_active ? 'Active' : 'Inactive'}</Badge> },
     { key: 'last', header: 'Last sign-in', sortValue: (a) => a.last_login ?? '', render: (a) => <span className="text-text-muted">{a.last_login ? dateTime(a.last_login) : 'Never'}</span> },
     {
@@ -162,6 +170,9 @@ export function Users() {
         return (
           <Dropdown label={`Actions for ${a.username}`} width="w-48" triggerClassName="h-8 w-8 justify-center text-text-muted hover:bg-neutral-bg hover:text-text" trigger={<MoreHorizontal size={16} />}>
             <DropdownItem icon={<Pencil size={15} />} onClick={() => { setEditing(a); setFormOpen(true); }}>Edit name & role</DropdownItem>
+            {can('permissions.manage') && !self && a.role !== 'superadmin' && (
+              <DropdownItem icon={<KeyRound size={15} />} onClick={() => setAccessFor(a.id)}>Manage access</DropdownItem>
+            )}
             {!self && (
               <>
                 <DropdownSeparator />
@@ -206,6 +217,7 @@ export function Users() {
           />
         )}
       </Card>
+      {accessFor && <UserAccessModal key={accessFor} userId={accessFor} onClose={() => setAccessFor(null)} onSaved={accounts.reload} />}
       {catalog.data && formOpen && (
         <UserForm key={editing?.id ?? 'new'} open onClose={closeForm} roles={editing?.id === user?.id ? allRoles.filter((r) => r.id === editing?.role) : assignable} account={editing} onSaved={accounts.reload} />
       )}

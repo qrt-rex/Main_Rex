@@ -22,7 +22,8 @@ export function dashboardPathFor(role?: string | null): string {
 }
 
 /** Super Admins may open any role's dashboard; everyone else only their own. */
-export function canViewDashboard(role: string | null | undefined, slug: string): boolean {
+export function canViewDashboard(role: string | null | undefined, slug: string, extraRoles: string[] = []): boolean {
   if ((role ?? '').toLowerCase() === 'superadmin') return true;
-  return dashboardPathFor(role) === `/dashboard/${slug}`;
+  // A user given extra roles may open each of those roles' dashboards as well as their own.
+  return [role, ...extraRoles].some((r) => dashboardPathFor(r) === `/dashboard/${slug}`);
 }

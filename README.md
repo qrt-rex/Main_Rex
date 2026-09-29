@@ -112,6 +112,37 @@ at **`/admin/permissions`** without a code change; it takes effect within 30 sec
 Saved role settings override the code defaults, so after a default changes in code, check
 the role in that screen too.
 
+### One backend for everything
+
+There is a single API process (`backend/`, one `uvicorn app.main:app`). HR, payroll, sales,
+legal, billing, users and roles are all routers of that one app, and the React frontend
+talks only to it. Roles never mean separate servers: they only decide what each signed-in
+account may see and do. (Ports 8000 and 8010 are the same backend pointed at production or
+the dev schema, not two services.)
+
+### Access for one person (Users > Manage access)
+
+Besides changing a whole role, a Super Admin (or anyone with `permissions.manage`) can shape
+one account at **`/admin/users`** > row menu > **Manage access**:
+
+- **Additional roles** — the person keeps their own role and also gets everything the ticked
+  roles can do. Example: an Employee given *Sales* and *Admin* gets employee access, sales
+  access and admin access together.
+- **Feature access** — for any single feature choose *Inherit* (follow their roles), *Allow*
+  (add it) or *Deny* (remove it even if a role has it). Deny always wins.
+
+Effective access = all of the person's roles, plus *Allow*, minus *Deny*. It is stored on the
+account (`extra_roles`, `grants`, `denies`), enforced by the server on every request, and takes
+effect on their next request. It is written to the activity log. Super Admin accounts cannot
+be edited, nobody can change their own access, and an editor who is not a Super Admin can only
+hand out access they hold themselves. The dashboard stays the one for the person's own role;
+they may also open the dashboards of their additional roles (e.g. `/dashboard/sales`).
+Business rules that used to look at the account's single role (sales person on invoices,
+sales incentive, leave routing) now consider all of their roles; leave goes to the most
+senior approver among them.
+
+API: `GET/PUT /api/rbac/users/{id}/access`; `GET /api/rbac/me` returns the combined permissions.
+
 An entity a role has no permission for is not rendered at all — no locked or dimmed cards.
 Unauthorised URLs show the 404 page, and the API refuses the underlying request
 independently of the frontend. Every API route needs a rule in `ROUTE_RULES`; a route

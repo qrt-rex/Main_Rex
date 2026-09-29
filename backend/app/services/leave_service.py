@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Tuple
 
 from app.database import get_collection, fix_id, fix_ids
-from app.services.rbac_service import normalize_role
+from app.services.rbac_service import normalize_role, user_roles
 from app.schemas.leave import (
     LeaveRequest,
     LeaveBalance,
@@ -25,8 +25,14 @@ DECIDERS = {"HR": {"hr", "admin", "superadmin"}, "ADMIN": {"admin", "superadmin"
 LEVEL_LABEL = {"HR": "HR", "ADMIN": "Admin", "SUPERADMIN": "Super Admin"}
 
 
-def can_decide(leave_doc: Dict[str, Any], role: Optional[str]) -> bool:
-    return normalize_role(role) in DECIDERS.get(leave_doc.get("approval_level") or "HR", DECIDERS["HR"])
+LEVEL_RANK = {"HR": 0, "ADMIN": 1, "SUPERADMIN": 2}
+
+
+def can_decide(leave_doc: Dict[str, Any], roles) -> bool:
+    """roles: one role name or all of a user's roles; any one of them being enough."""
+    roles = [roles] if isinstance(roles, str) or roles is None else roles
+    allowed = DECIDERS.get(leave_doc.get("approval_level") or "HR", DECIDERS["HR"])
+    return any(normalize_role(r) in allowed for r in roles)
 
 
 class LeaveService:
@@ -171,7 +177,8 @@ class LeaveService:
         department = emp.get("department", "General")
         account = await cls.applicant_login(emp.get("email"))
         applicant_role = normalize_role((account or {}).get("role"))
-        approval_level = LEVEL_BY_APPLICANT_ROLE.get(applicant_role, "HR")
+        # Someone holding several roles is routed to the most senior approver among them.
+        approval_level = max((LEVEL_BY_APPLICANT_ROLE.get(r, "HR") for r in user_roles(account)), key=LEVEL_RANK.get, default="HR")
 
         leave_record = LeaveRequest(
             employee_id=emp_id,
@@ -225,12 +232,12 @@ class LeaveService:
         if leave_doc.get("status") != LeaveStatus.PENDING.value:
             raise ValueError(f"Cannot alter request with status '{leave_doc.get('status')}'.")
 
-        decider_role = normalize_role(admin_user.get("role"))
+        decider_roles = user_roles(admin_user)
         level = leave_doc.get("approval_level") or "HR"
-        if not can_decide(leave_doc, decider_role):
+        if not can_decide(leave_doc, decider_roles):
             raise ValueError(f"This leave request needs approval from {LEVEL_LABEL.get(level, level)}.")
         own = str(admin_user.get("email") or "").strip().lower()
-        if own and own == str(leave_doc.get("employee_email") or "").strip().lower() and decider_role != "superadmin":
+        if own and own == str(leave_doc.get("employee_email") or "").strip().lower() and "superadmin" not in decider_roles:
             raise ValueError("You cannot decide your own leave request.")
 
         now_utc = datetime.utcnow()
@@ -311,13 +318,13 @@ class LeaveService:
         }
 
     @classmethod
-    async def get_hr_pending_leaves_dashboard(cls, viewer_role: Optional[str] = None, viewer_email: str = "") -> List[Dict[str, Any]]:
+    async def get_hr_pending_leaves_dashboard(cls, viewer_roles: Optional[List[str]] = None, viewer_email: str = "") -> List[Dict[str, Any]]:
         """Pending requests this viewer is allowed to decide (their own never appear here)."""
         leave_col = get_collection("leave_requests")
         cursor = leave_col.find({"status": LeaveStatus.PENDING.value}).sort("created_at", -1)
         me = viewer_email.strip().lower()
         pending_docs = [d for d in await cursor.to_list(200)
-                        if can_decide(d, viewer_role) and not (me and me == str(d.get("employee_email") or "").strip().lower() and normalize_role(viewer_role) != "superadmin")]
+                        if can_decide(d, viewer_roles or []) and not (me and me == str(d.get("employee_email") or "").strip().lower() and "superadmin" not in (viewer_roles or []))]
 
         enriched_list = []
         for doc in pending_docs:

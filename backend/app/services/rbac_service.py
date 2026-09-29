@@ -174,6 +174,8 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/rbac/catalog"): AUTHENTICATED,
     ("GET", "/api/rbac/roles"): "permissions.manage",
     ("PATCH", "/api/rbac/roles/{role}"): "permissions.manage",
+    ("GET", "/api/rbac/users/{user_id}/access"): "permissions.manage",
+    ("PUT", "/api/rbac/users/{user_id}/access"): "permissions.manage",
     ("GET", "/api/users"): "users.manage",
     ("POST", "/api/users"): "users.manage",
     ("PATCH", "/api/users/{user_id}"): "users.manage",
@@ -431,6 +433,37 @@ async def get_role_permissions(role: Optional[str]) -> Set[str]:
     return perms
 
 
+def user_roles(user: Optional[Dict[str, Any]]) -> List[str]:
+    """A user's roles, primary first: the account's role plus any extra roles a Super Admin gave them."""
+    out: List[str] = []
+    for r in [(user or {}).get("role"), *((user or {}).get("extra_roles") or [])]:
+        r = normalize_role(r)
+        if r in ROLE_IDS and r not in out:
+            out.append(r)
+    return out
+
+
+def has_role(user: Optional[Dict[str, Any]], role: str) -> bool:
+    return role in user_roles(user)
+
+
+async def get_user_permissions(user: Optional[Dict[str, Any]]) -> Set[str]:
+    """Everything this account may do: the union of all its roles, plus per-user allows, minus per-user denies.
+
+    Super Admin always has everything. Roles are read live (30 s cache); the overrides live on the account itself,
+    so a change applies on the user's next request.
+    """
+    roles = user_roles(user)
+    if SUPERADMIN in roles:
+        return set(_ALL_SET)
+    perms: Set[str] = set()
+    for r in roles:
+        perms |= await get_role_permissions(r)
+    perms |= {p for p in ((user or {}).get("grants") or []) if p in _ALL_SET}
+    perms -= set((user or {}).get("denies") or [])
+    return perms
+
+
 async def get_role_matrix() -> Dict[str, List[str]]:
     return {r["id"]: sorted(await get_role_permissions(r["id"])) for r in ROLES}
 
@@ -498,7 +531,7 @@ async def enforce(request: Request, credentials: Optional[HTTPAuthorizationCrede
         if request.query_params.get(flag, "").lower() in ("1", "true", "yes"):
             required.append(perm)
 
-    granted = await get_role_permissions(admin.get("role"))
+    granted = await get_user_permissions(admin)
     missing = [p for p in required if p not in granted]
     if missing:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to perform this action.")

@@ -501,16 +501,16 @@ async def _require_tax_invoice_access(admin: dict, invoice_type: str) -> None:
     """Tax invoices are HR-only; anyone with billing.create may issue proforma invoices."""
     if invoice_type != "invoice":
         return
-    from app.services.rbac_service import get_role_permissions
-    if "billing.tax_invoice" not in await get_role_permissions(admin.get("role")):
+    from app.services.rbac_service import get_user_permissions
+    if "billing.tax_invoice" not in await get_user_permissions(admin):
         raise HTTPException(status_code=403, detail="Only HR can issue or edit tax invoices. You can issue proforma invoices.")
 
 async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, str]:
     """The sales account a sale (and its collections) is credited to: the one named, else the creator if they are sales."""
     from app.services import sales_payroll
-    from app.services.rbac_service import normalize_role
+    from app.services.rbac_service import has_role
     email = str(email or "").strip().lower()
-    if not email and normalize_role(admin.get("role")) == "sales":
+    if not email and has_role(admin, "sales"):
         email = str(admin.get("email") or "").strip().lower()
     if not email:
         return {"sales_person_email": "", "sales_person_name": ""}
@@ -522,9 +522,9 @@ async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, 
 @router.get("/sales-people")
 async def list_sales_people(admin: dict = Depends(get_current_admin)):
     """Sales accounts an invoice can be credited to."""
-    from app.services.rbac_service import normalize_role
+    from app.services.rbac_service import has_role
     users = [u for u in await get_collection("admins").find({}).to_list(2000)
-             if u.get("is_active", True) and normalize_role(u.get("role")) == "sales"]
+             if u.get("is_active", True) and has_role(u, "sales")]
     items = [{"email": str(u.get("email") or "").lower(), "name": u.get("username") or u.get("email", "")} for u in users]
     return {"success": True, "items": sorted(items, key=lambda i: i["name"].lower())}
 
@@ -1284,8 +1284,8 @@ async def export_zip(admin: dict = Depends(get_current_admin)):
 # ---------------------------------------------------------------------------
 
 async def _can_manage_billing(admin: dict) -> bool:
-    from app.services.rbac_service import get_role_permissions
-    return "billing.manage" in await get_role_permissions(admin.get("role"))
+    from app.services.rbac_service import get_user_permissions
+    return "billing.manage" in await get_user_permissions(admin)
 
 def _who(admin: dict) -> str:
     return admin.get("email") or admin.get("username", "admin")
@@ -1356,8 +1356,8 @@ async def create_request(payload: Dict[str, Any], admin: dict = Depends(get_curr
     seq = ((await counters.find_one({"key": "REQUEST"})) or {}).get("sequence_value", 0) + 1
     await counters.update_one({"key": "REQUEST"}, {"$set": {"key": "REQUEST", "sequence_value": seq}}, upsert=True)
     rid = str(uuid.uuid4())
-    from app.services.rbac_service import normalize_role
-    is_sales = normalize_role(admin.get("role")) == "sales"
+    from app.services.rbac_service import has_role
+    is_sales = has_role(admin, "sales")
     doc = {**_clean_request(payload), "id": rid, "_id": rid, "sales_person_email": _who(admin).lower() if is_sales else "", "request_number": f"REQ-{seq:04d}", "status": "pending",
            "requested_by": _who(admin), "requested_by_name": admin.get("name") or _who(admin),
            "created_at": datetime.now(timezone.utc).isoformat()}

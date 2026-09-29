@@ -56,7 +56,7 @@ export function RoleDashboard() {
   const { slug = '' } = useParams();
   const { user } = useAuth();
 
-  if (!canViewDashboard(user?.role, slug)) return <Navigate to={dashboardPathFor(user?.role)} replace />;
+  if (!canViewDashboard(user?.role, slug, user?.extra_roles)) return <Navigate to={dashboardPathFor(user?.role)} replace />;
   return (
     <>
       <Body slug={slug} />

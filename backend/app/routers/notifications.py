@@ -27,7 +27,7 @@ def _event_item(log: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("")
 async def my_notifications(admin: Dict[str, Any] = Depends(get_current_admin)):
     """Feed built only from what the caller is allowed to see."""
-    granted = await rbac.get_role_permissions(admin.get("role"))
+    granted = await rbac.get_user_permissions(admin)
     items: List[Dict[str, Any]] = []
 
     if "hr.leave.approve" in granted:

@@ -8,6 +8,8 @@ export interface CurrentUser {
   email: string;
   role: string;
   role_label: string;
+  /** Roles given on top of the primary one, by a Super Admin. */
+  extra_roles?: string[];
   last_login: string | null;
   permissions: string[];
 }

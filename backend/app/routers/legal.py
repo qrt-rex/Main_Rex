@@ -22,9 +22,8 @@ LegalStatus = Literal["PENDING", "UNDER REVIEW", "APPROVED", "HOLD", "REJECTED"]
 # assign, approve and import. Anyone else with Legal access sees only the clients assigned to them.
 # ---------------------------------------------------------------------------
 async def full_legal_access(admin: Dict[str, Any]) -> bool:
-    from app.services.rbac_service import get_role_permissions, normalize_role
-    role = normalize_role(admin.get("role"))
-    return role in ("legal", "superadmin") or "legal.manage" in await get_role_permissions(role)
+    from app.services.rbac_service import get_user_permissions, has_role
+    return has_role(admin, "legal") or has_role(admin, "superadmin") or "legal.manage" in await get_user_permissions(admin)
 
 
 async def require_full_legal(admin: Dict[str, Any]) -> None:

@@ -8,7 +8,7 @@ from app.schemas.leave import (
     LeaveBalance,
 )
 from app.services.leave_service import LeaveService, LEVEL_LABEL
-from app.services.rbac_service import get_role_permissions, normalize_role
+from app.services.rbac_service import get_user_permissions, normalize_role, user_roles
 from app.services.leave_alert_worker import LeaveAlertWorker
 from app.services.auth_service import get_current_user
 from app.database import get_collection, fix_ids
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/leaves", tags=["Leave Management"])
 
 
 async def _is_approver(user: Dict[str, Any]) -> bool:
-    return "hr.leave.approve" in await get_role_permissions(user.get("role"))
+    return "hr.leave.approve" in await get_user_permissions(user)
 
 
 async def _own_employee(user: Dict[str, Any]) -> Dict[str, Any]:
@@ -34,7 +34,7 @@ async def _alert_recipients(leave: Dict[str, Any]) -> Optional[List[str]]:
         return None
     allowed = {"admin", "superadmin"} if leave["approval_level"] == "ADMIN" else {"superadmin"}
     accounts = await get_collection("admins").find({}).to_list(2000)
-    return sorted({a["email"] for a in accounts if a.get("email") and a.get("is_active", True) and normalize_role(a.get("role")) in allowed}) or None
+    return sorted({a["email"] for a in accounts if a.get("email") and a.get("is_active", True) and any(r in allowed for r in user_roles(a))}) or None
 
 
 @router.get("", status_code=status.HTTP_200_OK)
@@ -94,7 +94,7 @@ async def apply_for_own_leave(
 
 @router.get("/pending-dashboard", status_code=status.HTTP_200_OK)
 async def get_hr_pending_leaves(current_user: Dict[str, Any] = Depends(get_current_user)):
-    items = await LeaveService.get_hr_pending_leaves_dashboard(current_user.get("role"), current_user.get("email") or "")
+    items = await LeaveService.get_hr_pending_leaves_dashboard(user_roles(current_user), current_user.get("email") or "")
     return {"success": True, "count": len(items), "data": items}
 
 

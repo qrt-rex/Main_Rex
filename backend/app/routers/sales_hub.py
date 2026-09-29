@@ -24,7 +24,7 @@ from app.database import get_collection
 from app.schemas.attendance import PunchInRequest, PunchOutRequest
 from app.services.attendance_service import AttendanceService
 from app.services.auth_service import get_current_admin
-from app.services.rbac_service import ROLES, get_role_permissions, normalize_role
+from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role
 
 router = APIRouter(prefix="/api/sales-hub", tags=["Sales Workspace"])
 logger = logging.getLogger("rexera.sales_hub")
@@ -64,7 +64,7 @@ def _me(admin: Dict[str, Any]) -> Dict[str, str]:
 
 
 async def _can_manage(admin: Dict[str, Any]) -> bool:
-    return "sales.hub.manage" in await get_role_permissions(admin.get("role"))
+    return "sales.hub.manage" in await get_user_permissions(admin)
 
 
 async def _user(user_id: str) -> Dict[str, str]:
@@ -79,7 +79,7 @@ async def _sales_team() -> List[Dict[str, Any]]:
     users = [u for u in await get_collection("admins").find({}).to_list(2000) if u.get("is_active", True)]
     lead_owners = {(l.get("assigned_to") or {}).get("user_id") for l in await get_collection("sales_leads").find({}).to_list(20000)}
     session_users = {s.get("user_id") for s in await get_collection("sales_day_sessions").find({"date": _today()}).to_list(5000)}
-    team = [u for u in users if normalize_role(u.get("role")) in {"sales", "employee"} or str(u["_id"]) in lead_owners | session_users]
+    team = [u for u in users if has_role(u, "sales") or has_role(u, "employee") or str(u["_id"]) in lead_owners | session_users]
     return sorted(team, key=lambda u: (u.get("username") or u.get("email", "")).lower())
 
 

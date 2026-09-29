@@ -261,7 +261,7 @@ async def _me(admin: Dict[str, Any]) -> Dict[str, Any]:
 async def workspace_summary(admin: Dict[str, Any] = Depends(get_current_admin)):
     """Everything a role dashboard renders. Blocks the caller can't see are omitted."""
     role = rbac.normalize_role(admin.get("role"))
-    granted: Set[str] = await rbac.get_role_permissions(role)
+    granted: Set[str] = await rbac.get_user_permissions(admin)
 
     # Every block the caller may see, gathered concurrently: each one is several
     # round trips and the dashboard waits for all of them.
@@ -330,7 +330,7 @@ async def _collection_sizes(names: List[str]) -> List[Dict[str, Any]]:
 @router.get("/system")
 async def system_status(admin: Dict[str, Any] = Depends(get_current_admin)):
     """Live infrastructure, database, security and backup status for the IT dashboard."""
-    granted = await rbac.get_role_permissions(rbac.normalize_role(admin.get("role")))
+    granted = await rbac.get_user_permissions(admin)
 
     started = time.time()
     db_error = None

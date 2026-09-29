@@ -23,7 +23,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.database import get_collection
-from app.services.rbac_service import normalize_role
+from app.services.rbac_service import has_role
 
 logger = logging.getLogger("rexera.sales_payroll")
 
@@ -114,7 +114,7 @@ async def sales_user(email: Optional[str]) -> Optional[Dict[str, Any]]:
     if not email:
         return None
     for u in await get_collection("admins").find({"email": _email_match(email)}).to_list(5):
-        if u.get("is_active", True) and normalize_role(u.get("role")) == "sales":
+        if u.get("is_active", True) and has_role(u, "sales"):
             return u
     return None
 
