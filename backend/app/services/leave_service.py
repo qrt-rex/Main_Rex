@@ -199,6 +199,7 @@ class LeaveService:
         roles = user_roles(account)
         if not roles and (str(department).upper() == "SALES" or "SALES" in str(emp.get("designation") or "").upper()):
             roles = ["sales"]
+        applicant_role = roles[0] if roles else ""
         # Someone holding several roles is routed to the most senior approver among them.
         approval_level = max((LEVEL_BY_APPLICANT_ROLE.get(r, "HR") for r in roles), key=LEVEL_RANK.get, default="HR")
 

@@ -6,7 +6,7 @@ import pytest
 
 from app.config import settings
 from app.routers import ivr as ivr_router
-from tests.test_sales_hub import user
+from tests.conftest import user
 
 IVR_USER = {"id": 1220, "name": "Rexera Test Co", "email": "ivr@rexera-test.com", "role": "company_admin",
             "company": {"id": 74, "code": "RT", "click_to_call_api_enabled": True}}

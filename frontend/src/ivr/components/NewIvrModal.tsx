@@ -27,6 +27,7 @@ export function NewIvrModal({ isOpen, onClose, onSave }: NewIvrModalProps) {
       name: name.trim().toUpperCase(),
       subtitle: `Concurrency ${concurrency}`,
       status: 'running',
+      statusKind: 'running',
       state: 'active',
       concurrency,
       progressPercentage: 1,
@@ -40,6 +41,17 @@ export function NewIvrModal({ isOpen, onClose, onSave }: NewIvrModalProps) {
       didPool,
       transferGroup,
       leadListName,
+      metrics: {
+        total: totalLeads,
+        dialed: 120,
+        queued: totalLeads - 120,
+        dialing: Math.min(concurrency, 35),
+        completed: 85,
+        interested: 4,
+        concurrency,
+      },
+      progress: 1,
+      raw: {},
     });
     onClose();
   };
