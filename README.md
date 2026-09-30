@@ -83,8 +83,9 @@ Set these environment variables:
 
 - `PYTHON_VERSION` (e.g. `3.11.9`) and `NODE_VERSION=22`
 - the backend settings (see Configuration), because `backend/.env` is not uploaded
-- `APP_ENV=production` and `EMAIL_DEV_MODE=False`
-- `COMPANY_WEBSITE` set to the service's address
+- `APP_ENV=production`, `EMAIL_DEV_MODE=False` and your own `JWT_SECRET_KEY` (the server refuses to start in
+  production without them)
+- `COMPANY_WEBSITE` set to the service's address (reset and joining links use it)
 
 Add that address to the Google OAuth client's allowed JavaScript origins.
 
@@ -97,10 +98,10 @@ Add that address to the Google OAuth client's allowed JavaScript origins.
 | Setting | Purpose |
 |---|---|
 | `POSTGRES_URI` | PostgreSQL connection (`postgresql+asyncpg://…`). `DB_SCHEMA` picks the schema (default `hr_rexera`). |
-| `JWT_SECRET_KEY` | Signs sessions. **Set a long random value in production.** |
+| `JWT_SECRET_KEY` | Signs sessions. **Set a long random value in production**: with `APP_ENV=production` the server refuses to start if it is the default or shorter than 32 characters. |
 | `SMTP_*` / `BREVO_API_KEY` | Outgoing email: sign-in codes, leave decisions, payslips, broadcasts. |
-| `EMAIL_DEV_MODE` | `True` shows sign-in codes on screen instead of emailing them. **Use `False` in production.** |
-| `COMPANY_WEBSITE` | Address the app is served from; joining emails link to `{COMPANY_WEBSITE}/joining`. |
+| `EMAIL_DEV_MODE` | `True` shows sign-in codes on screen instead of emailing them. **Use `False` in production** (the server refuses to start in production otherwise). |
+| `COMPANY_WEBSITE` | Address the app is served from. Joining emails link to `{COMPANY_WEBSITE}/joining`, and password reset emails to `{COMPANY_WEBSITE}/reset-password` (or to an address in `CORS_ORIGINS`, or localhost, when the request came from there). |
 | `CORS_ORIGINS` | Allowed browser origins, e.g. `["*"]` or `["http://localhost:5173"]`. |
 | `DEFAULT_ADMIN_*` | The Super Admin account created on first start. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Sign in with Google*. It is off, and its button hidden, while `GOOGLE_CLIENT_ID` is empty. Only Google tokens issued to that client ID and accounts on the domains in `ALLOWED_GOOGLE_DOMAINS` (rexera.co.in, rexera.in, rexera.com) are accepted. |
