@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 
 from app.database import get_collection
+from app.services.audit_service import AuditService
 from app.services.auth_service import get_current_admin
 from app.services import sales_payroll
 from app.services.rbac_service import get_user_permissions, has_role
@@ -1113,6 +1114,12 @@ async def record_payment(payload: Dict[str, Any], admin: dict = Depends(get_curr
     if amount > outstanding + 0.005:
         raise HTTPException(status_code=422, detail=f"The payment is more than the balance due (₹{outstanding:,.2f}).")
     payment_date = _date(payload.get("payment_date"), "Payment date", date.today().isoformat())
+    # DSC is taken at today's configured amount and stored on the payment, so changing the setting later
+    # never rewrites payments already recorded. The sales scorecard and incentive use amount - DSC.
+    dsc_deducted = bool(payload.get("dsc_deducted"))
+    dsc_amount = float((await sales_payroll.get_config())["dsc_amount"]) if dsc_deducted else 0.0
+    if dsc_amount > amount:
+        raise HTTPException(status_code=422, detail=f"The DSC deduction (₹{dsc_amount:,.2f}) is more than this payment.")
     new_paid = round(curr_paid + amount, 2)
     new_balance = round(max(grand_total - new_paid, 0.0), 2)
 
@@ -1125,7 +1132,13 @@ async def record_payment(payload: Dict[str, Any], admin: dict = Depends(get_curr
         "invoice_id": inv.get("id"),
         "invoice_number": inv.get("invoice_number"),
         "client_name": inv.get("client", {}).get("name", ""),
-        "amount": amount,
+        "client_id": inv.get("client", {}).get("id") or inv.get("client_id", ""),
+        "amount": amount,  # gross collection
+        "dsc_deducted": dsc_deducted,
+        "dsc_amount": round(dsc_amount, 2),
+        "net_amount": round(amount - dsc_amount, 2),
+        "sales_person_email": inv.get("sales_person_email", ""),
+        "sales_person_name": inv.get("sales_person_name", ""),
         "payment_method": payload.get("payment_method", "NEFT/RTGS"),
         "reference_number": payload.get("reference_number", ""),
         "payment_date": payment_date,
@@ -1134,6 +1147,10 @@ async def record_payment(payload: Dict[str, Any], admin: dict = Depends(get_curr
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await coll_p.insert_one(doc)
+    await AuditService.log_action(user_email=doc["recorded_by"], user_role=admin.get("role", ""), action="Recorded payment",
+                                  entity_type="billing_payment", entity_id=pay_id,
+                                  new_value={k: doc[k] for k in ("invoice_number", "amount", "dsc_amount", "net_amount",
+                                                                 "payment_date", "sales_person_email")})
     await coll_i.update_one(
         {"_id": inv["_id"]},
         {"$set": {"paid_amount": new_paid, "balance_amount": new_balance, "status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
@@ -1402,6 +1419,12 @@ async def delete_payment(payment_id: str, admin: dict = Depends(get_current_admi
         await coll_i.update_one({"_id": inv["_id"]}, {"$set": {"paid_amount": paid, "balance_amount": round(max(grand - paid, 0.0), 2),
                                                               "status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
     await coll_p.delete_one({"_id": pay["_id"]})
+    # The scorecard and any payroll not yet finalized drop it; a finalized payroll keeps its incentive until
+    # it is unlocked and recalculated.
+    await AuditService.log_action(user_email=admin.get("email") or admin.get("username", "admin"), user_role=admin.get("role", ""),
+                                  action="Removed payment", entity_type="billing_payment", entity_id=str(pay["_id"]),
+                                  old_value={k: pay.get(k) for k in ("invoice_number", "amount", "dsc_amount", "payment_date",
+                                                                     "sales_person_email")})
     return {"success": True, "message": "Payment removed"}
 
 # ---- Exports & monthly summary ----

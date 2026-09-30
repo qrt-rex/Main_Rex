@@ -147,6 +147,9 @@ People sign in at `/login` in one of two ways:
     Admin / Accounting and Super Admin. Everyone can open **their own** payslip from their dashboard.
   - **Attendance is private**: only HR, Admin / Accounting and Super Admin see other people's
     attendance; everyone else sees only their own.
+  - **Sales incentives**: the DSC amount is changed only by a Super Admin. The incentive rules and the
+    scorecard download are for HR, Admin / Accounting and Super Admin. On the leaderboard, other
+    people's monthly target and incentive (both reveal salary) need payroll access.
 - A page a person has no access to does not appear anywhere, and opening its address shows "not
   found". The API refuses the underlying requests independently of the web app. Every API route has
   an access rule in `backend/app/services/rbac_service.py`; a route without one is refused.
@@ -167,6 +170,8 @@ People sign in at `/login` in one of two ways:
 | Broadcasts | `/hr/broadcasts` | Company announcements, optional acknowledgement with live counts |
 | Productivity & performance | `/hr/productivity`, `/hr/performance` | Tasks, timesheets, blockers, scorecards |
 | Sales workspace | `/sales/hub`, sales dashboard | Leads and dialer, Start / End Day, schemes, flyers/posts, sales information, team progress |
+| Sales scorecard | `/sales/scorecard`, `/hr/sales-incentives` | Daily / weekly / monthly collection leaderboard, *My performance*, eligibility with what's left to go, Excel / PDF download; HR sees every incentive and recalculates payroll |
+| Incentive settings | `/hr/incentive-settings`, `/admin/sales-config` | Daily, weekly and monthly rules and slabs (HR); DSC deduction amount (Super Admin) |
 | Billing & invoicing | `/billing` | Tax and proforma invoices, quotations, requests, clients, payments, GSTR-1, reports, documents |
 | Legal | `/legal` | Client records, assignments, approvals, client document forms |
 | Administration | `/admin/users`, `/admin/permissions`, `/admin/activity`, `/admin/automations` | Accounts, access, activity log, scheduled automations |
@@ -195,14 +200,27 @@ Nobody decides their own request. Approved leave is marked on attendance and use
   - A day started but not ended counts as a half day.
   - A working day with no punch and no leave counts as absent.
   - Sundays are paid days off.
+  - Days before the joining date and after the *Date of exit* (the last working day, set on the
+    employee's record) are absent (loss of pay), Sundays included. This applies to all staff,
+    including those who don't use Start Day.
 - **Sales collection incentive**, from payments received on invoices that name the person as sales
-  person. Salary = monthly standard gross.
+  person. Every rule uses the **net** collection: the payment minus the DSC deducted when it was
+  recorded. Salary = monthly standard gross. HR changes the rules in *Incentive settings*; these are
+  the defaults:
 
-| Collection in the month | Incentive |
+| Rule | Default |
 |---|---|
-| Below salary ×3 | None |
-| Salary ×3 up to ×4 | 5 % of each day with ₹10,000 or more collected, plus 5 % of each Mon–Sun week with ₹50,000 or more (money already paid daily is not paid again) |
-| Salary ×4 or more | Monthly slab on the whole month's collection instead: under ₹2L 20 %, ₹2–3L 25 %, ₹3–4L 27.5 %, ₹4–5L 30 %, ₹5–6L 32.5 %, ₹6–7L 35 %, ₹7–8L 37.5 %, ₹8L+ 40 % |
+| Eligibility | Net month collection of salary ×3 or more; below it no incentive at all |
+| Daily | 5 % of each day with ₹10,000 or more |
+| Weekly | 5 % of each Mon–Sun week with ₹50,000 or more (the whole week, on top of daily) |
+| Monthly | At salary ×4 or more, a slab % of the whole month on top: under ₹2L 20 %, ₹2–3L 25 %, ₹3–4L 27.5 %, ₹4–5L 30 %, ₹5–6L 32.5 %, ₹6–7L 35 %, ₹7–8L 37.5 %, ₹8L+ 40 % |
+
+  Daily, weekly and monthly add up. Payroll takes the incentive automatically and keeps a copy of the
+  breakdown, which the payslip shows. A recalculation records who ran it and the incentive before and
+  after. Finalized payroll never changes until it is unlocked. On the 1st the *Sales incentive
+  month-end* automation records last month's final incentives and emails HR any payroll calculated
+  earlier with a different figure. The incentive depends only on the payments collected: the salary ×3
+  and ×4 targets use the full monthly salary, also for someone who joined mid-month.
 
 ### Billing rules
 
@@ -210,6 +228,9 @@ Nobody decides their own request. Approved leave is marked on attendance and use
 - **Proforma invoices and quotations** can be created by anyone with billing create access
   (Employee / Sales Person, HR, Admin).
 - **Payments, clients, deletes and approving requests** need billing manage access.
+- **DSC**: tick *DSC deducted* when recording a payment. The amount set by the Super Admin (default
+  ₹850) is stored on that payment; changing the setting later doesn't alter payments already recorded.
+  To correct a payment, remove it and record it again. Both are written to the activity log.
 - **GST**: Gujarat supplies get CGST + SGST; other states get IGST. Each line is taxed at its own rate.
 - **Numbering**: invoice numbers run per branch and financial year.
 
@@ -219,7 +240,7 @@ Nobody decides their own request. Approved leave is marked on attendance and use
 
 See **[QA_TESTING.md](QA_TESTING.md)** for the latest QA cycle. It covers:
 
-- the 300-case backend suite
+- the 313-case backend suite
 - an access-control sweep of every API route for every user type
 - a screen sweep of every page for every user type
 - static analysis

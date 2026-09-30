@@ -10,6 +10,9 @@ interface Payment {
   invoice_number: string;
   client_name: string;
   amount: number;
+  dsc_amount?: number;
+  net_amount?: number;
+  sales_person_name?: string;
   payment_method: string;
   reference_number: string;
   payment_date: string;
@@ -56,16 +59,18 @@ export function BillingPayments() {
                 <th className="px-4 py-3">Method</th>
                 <th className="px-4 py-3">Reference / UTR</th>
                 <th className="px-4 py-3 text-right">Amount Received (₹)</th>
+                <th className="px-4 py-3 text-right">DSC (₹)</th>
+                <th className="px-4 py-3 text-right">Scorecard (₹)</th>
                 <th className="px-4 py-3 text-right">Recorded By</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-text-muted">Loading payment ledger...</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center text-text-muted">Loading payment ledger...</td></tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-10 text-center text-text-muted">
+                  <td colSpan={10} className="p-10 text-center text-text-muted">
                     <Banknote className="mx-auto h-8 w-8 text-text-muted/50 mb-2" />
                     No payments recorded yet.
                   </td>
@@ -82,6 +87,10 @@ export function BillingPayments() {
                     <td className="px-4 py-3 text-xs font-mono text-text">{p.reference_number || '—'}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
                       ₹{p.amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-text-muted">{p.dsc_amount ? `− ${p.dsc_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}</td>
+                    <td className="px-4 py-3 text-right text-xs text-text" title={p.sales_person_name ? `Credited to ${p.sales_person_name}` : 'No sales person on the invoice'}>
+                      {(p.net_amount ?? p.amount - (p.dsc_amount ?? 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-text-muted">{p.recorded_by}</td>
                     <td className="px-4 py-3 text-right">

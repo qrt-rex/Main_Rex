@@ -177,22 +177,37 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
           <Input label="Bonus / incentive (₹)" type="number" min={0} value={v.bonus} onChange={set('bonus')} />
           <Input label="Other deductions (₹)" type="number" min={0} value={v.other_deductions} onChange={set('other_deductions')} />
         </div>
+        {!!(sales?.attendance?.before_joining_days || sales?.attendance?.after_exit_days) && (
+          <p className="border-t border-border px-4 py-3 text-xs text-text-muted">
+            {[sales.attendance.before_joining_days ? `the ${sales.attendance.before_joining_days} day(s) before the joining date` : '',
+              sales.attendance.after_exit_days ? `the ${sales.attendance.after_exit_days} day(s) after the exit date` : '']
+              .filter(Boolean).join(' and ').replace(/^t/, 'T')} are counted as absent (loss of pay).
+          </p>
+        )}
       </Card>
       <div className="space-y-4">
         {sales?.is_sales && v.employee_id && (
           <Card>
             <CardHeader title="Sales attendance & incentive" description="From Start/End Day and client collections" />
             <dl className="divide-y divide-border text-sm">
-              {sales.attendance && ([['Full days', sales.attendance.full_days], ['Half days', sales.attendance.half_days], ['Absent', sales.attendance.absent_days],
+              {sales.attendance && ([['Full days', sales.attendance.full_days], ['Half days', sales.attendance.half_days], ['Absent', `${sales.attendance.absent_days}${sales.attendance.before_joining_days ? ` · ${sales.attendance.before_joining_days} before joining` : ''}${sales.attendance.after_exit_days ? ` · ${sales.attendance.after_exit_days} after exit` : ''}`],
                 ['Leave (paid / unpaid)', `${sales.attendance.paid_leave_days} / ${sales.attendance.unpaid_leave_days}`], ['Late marks', sales.attendance.late_count]] as const).map(([k, n]) => (
                 <div key={k} className="flex justify-between px-4 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{n}</dd></div>
               ))}
+              {sales.incentive && ([
+                ['Gross collection', money(sales.incentive.gross_collection)],
+                ['DSC deducted', `− ${money(sales.incentive.dsc_deduction)}`],
+                ['Net eligible collection', money(sales.incentive.net_collection)],
+                ['Eligibility', `${sales.incentive.eligibility.status} (needs ${money(sales.incentive.gate_amount)})`],
+                ['Monthly target', `${money(sales.incentive.target_amount)} · ${sales.incentive.target_achievement}%`],
+                ['Daily incentive', money(sales.incentive.daily_incentive)],
+                ['Weekly incentive', money(sales.incentive.weekly_incentive)],
+                [`Monthly incentive${sales.incentive.slab_percent != null ? ` (${sales.incentive.slab_percent}%)` : ''}`, money(sales.incentive.monthly_incentive)],
+              ] as const).map(([k, n]) => (
+                <div key={k} className="flex justify-between px-4 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{n}</dd></div>
+              ))}
               {sales.incentive && (
-                <>
-                  <div className="flex justify-between px-4 py-2"><dt className="text-text-muted">Collected this month</dt><dd className="tabular-nums text-text">{money(sales.incentive.collection)}</dd></div>
-                  <div className="flex justify-between px-4 py-2"><dt className="text-text-muted">Target (salary ×4)</dt><dd className="tabular-nums text-text">{money(sales.incentive.target_amount)}</dd></div>
-                  <div className="flex justify-between px-4 py-2 font-medium"><dt className="text-text">Sales incentive</dt><dd className="tabular-nums text-success">{money(sales.incentive.incentive)}</dd></div>
-                </>
+                <div className="flex justify-between px-4 py-2 font-medium"><dt className="text-text">Total incentive (added automatically)</dt><dd className="tabular-nums text-success">{money(sales.incentive.incentive)}</dd></div>
               )}
             </dl>
             {sales.incentive && <p className="px-4 py-3 text-xs text-text-muted">{sales.incentive.note}</p>}

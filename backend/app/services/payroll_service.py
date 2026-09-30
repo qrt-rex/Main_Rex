@@ -402,6 +402,12 @@ class PayrollService:
                 # A recalculation is a new revision of the same record, not a brand-new one.
                 record["revision_number"] = existing.get("revision_number", 1)
                 record["created_at"] = existing.get("created_at", now_str)
+                previous_incentive = (existing.get("earnings") or {}).get("incentive", 0.0)
+                # Sales incentive audit trail: who recalculated, when, and what it was before and after.
+                record["incentive_history"] = [*(existing.get("incentive_history") or []), {
+                    "at": now_str, "by": user_email, "previous": previous_incentive,
+                    "new": record["earnings"].get("incentive", 0.0),
+                    "config_version": (incentive_details or {}).get("config_version")}]
                 await payroll_col.update_one({"_id": existing["_id"]}, {"$set": record})
                 record["_id"] = str(existing["_id"])
                 record["id"] = str(existing["_id"])
@@ -417,7 +423,8 @@ class PayrollService:
                 entity_type="payroll",
                 entity_id=record["_id"],
                 employee_name=emp.get("full_name"),
-                new_value={"net_salary": record["net_salary"]}
+                old_value={"incentive": previous_incentive} if existing else None,
+                new_value={"net_salary": record["net_salary"], "incentive": record["earnings"].get("incentive", 0.0)}
             )
 
         return record
@@ -706,6 +713,7 @@ class PayrollService:
             "total_deductions": rec.get("total_deductions", 0.0),
             "net_salary": rec.get("net_salary", 0.0),
             "net_salary_words": rec.get("net_salary_words", ""),
+            "incentive_details": rec.get("incentive_details"),  # the sales performance block on the payslip
             "payment_status": "Pending",
             "created_at": now_str
         }

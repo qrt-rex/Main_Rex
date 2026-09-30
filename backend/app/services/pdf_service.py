@@ -48,6 +48,33 @@ class PDFService:
             except Exception:
                 return "₹0.00"
 
+        # Sales staff: how the incentive on this slip was worked out (a copy taken when payroll was calculated).
+        sales_block = ""
+        inc = raw_slip.get("incentive_details")
+        if isinstance(inc, dict):
+            elig = inc.get("eligibility") or {}
+            slab = inc.get("slab_percent")
+            lines = [
+                ("Gross Collection", fmt(inc.get("gross_collection", inc.get("collection", 0)))),
+                ("DSC Deduction", fmt(inc.get("dsc_deduction", 0))),
+                ("Net Eligible Collection", fmt(inc.get("net_collection", inc.get("collection", 0)))),
+                ("Eligibility", f"{escape(str(elig.get('status', '—')))} (needs {fmt(inc.get('gate_amount', 0))})"),
+                ("Monthly Target", fmt(inc.get("target_amount", 0))),
+                ("Daily Incentive", fmt(inc.get("daily_incentive", 0))),
+                ("Weekly Incentive", fmt(inc.get("weekly_incentive", 0))),
+                (f"Monthly Incentive{f' ({slab:g}% slab)' if isinstance(slab, (int, float)) else ''}", fmt(inc.get("monthly_incentive", 0))),
+            ]
+            rows_html = "".join(f"<tr><td>{k}</td><td class=\"amt\">{v}</td></tr>" for k, v in lines)
+            sales_block = f"""
+        <div class="section-header">SALES PERFORMANCE</div>
+        <table class="calc-table">
+            <tbody>
+                {rows_html}
+                <tr class="total-row"><td>TOTAL INCENTIVE</td><td class="amt">{fmt(inc.get('incentive', 0))}</td></tr>
+            </tbody>
+        </table>
+        <p style="font-size: 10px; color: #64748b; margin: -8px 0 15px;">{escape(str(inc.get('note', '')))}</p>"""
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -218,7 +245,7 @@ class PDFService:
                 </td>
             </tr>
         </table>
-
+{sales_block}
         <!-- Net Payable Summary Banner -->
         <div class="net-salary-banner">
             <div>

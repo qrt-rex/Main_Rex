@@ -82,6 +82,10 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("sales.contacts.view", "Contacts"),
         ("sales.hub.view", "Sales workspace: my leads & dialer, schemes, material, team progress, day start/end"),
         ("sales.hub.manage", "Add & edit leads, schemes, flyers/material and sales information"),
+        ("sales.scorecard.view", "Sales scorecard & leaderboard (others' targets and incentives need payroll access)"),
+        ("sales.scorecard.export", "Download the sales scorecard (Excel / PDF)"),
+        ("sales.incentives.configure", "Change sales incentive rules (thresholds, %, salary multipliers, slabs)"),
+        ("sales.dsc.manage", "Change the DSC deduction amount"),
     ]),
     ("legal", "Legal", [
         ("legal.view", "Contracts & cases (only clients assigned to you, unless Legal team)"),
@@ -119,7 +123,8 @@ _ALL_SET = set(ALL_PERMISSIONS)
 
 _HR_ALL = [p for p in ALL_PERMISSIONS if p.startswith("hr.")]
 # Sales staff use the sales workspace but don't edit its leads/schemes/material: that is Admin & Legal.
-_SALES_ALL = [p for p in ALL_PERMISSIONS if p.startswith("sales.") and p != "sales.hub.manage"]
+_SALES_ALL = [p for p in ALL_PERMISSIONS if p.startswith("sales.") and p not in
+              ("sales.hub.manage", "sales.scorecard.export", "sales.incentives.configure", "sales.dsc.manage")]
 _BILLING_ALL = ["billing.view", "billing.create", "billing.manage"]
 
 # Existing `hr` accounts had unrestricted access in the standalone Rexera-HR app, so they
@@ -128,8 +133,9 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
-              "sales.hub.manage"],
-    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit"],
+              "sales.hub.manage", "sales.scorecard.export"],
+    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit",
+           "sales.scorecard.view", "sales.scorecard.export", "sales.incentives.configure"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage"],
     "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
@@ -380,6 +386,13 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/sales-hub/materials"): "sales.hub.manage",
     ("PUT", "/api/sales-hub/materials/{material_id}"): "sales.hub.manage",
     ("DELETE", "/api/sales-hub/materials/{material_id}"): "sales.hub.manage",
+    # Sales performance: scorecard, leaderboard, incentive rules
+    ("GET", "/api/sales-performance/scorecard"): "sales.scorecard.view",
+    ("GET", "/api/sales-performance/me"): "sales.scorecard.view",
+    ("GET", "/api/sales-performance/export"): "sales.scorecard.export",
+    ("GET", "/api/sales-performance/config"): AUTHENTICATED,  # the rules are no secret; the payment form needs the DSC amount
+    ("PUT", "/api/sales-performance/config"): "sales.incentives.configure",
+    ("PUT", "/api/sales-performance/config/dsc"): "sales.dsc.manage",
     # Automations
     ("GET", "/api/automations"): "automations.manage",
     ("PUT", "/api/automations/settings"): "automations.manage",
@@ -440,6 +453,10 @@ ROLE_RESERVED_PERMISSIONS: Dict[str, Set[str]] = {
     "hr.payroll.view": {"superadmin", "admin", "hr"},
     "hr.payroll.process": {"superadmin", "admin", "hr"},
     "hr.payroll.approve": {"superadmin", "admin", "hr"},
+    # The whole team's scorecard download and the incentive rules: HR and above. The DSC amount: Super Admin.
+    "sales.scorecard.export": {"superadmin", "admin", "hr"},
+    "sales.incentives.configure": {"superadmin", "admin", "hr"},
+    "sales.dsc.manage": {"superadmin"},
 }
 # Everyone else sees only their own attendance, whatever permissions they hold.
 FULL_ATTENDANCE_ROLES = {"superadmin", "admin", "hr"}

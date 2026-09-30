@@ -75,6 +75,7 @@ function EmployeeDrawer({ id, onClose }: { id: string | null; onClose: () => voi
             <DetailList items={[
               ['Email', e.email], ['Mobile', e.mobile_number], ['Branch', e.branch], ['Gender', e.gender],
               ['Reporting manager', e.reporting_manager], ['Date of joining', date(e.date_of_joining)],
+              ...(e.date_of_exit ? [['Date of exit', date(e.date_of_exit)] as [string, string]] : []),
               ['Status', <StatusBadge status={e.employee_status} />], ['Onboarding', e.joining_status],
             ]} />
           </Section>

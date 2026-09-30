@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Date | 29 September 2026 |
-| Build under test | `main` after merging the Google Workspace sign-in and password-reset-link commits (`59bddaf`, `3165116`, `5e6f03d`) |
-| Backend | FastAPI app in `backend/` (222 API route/method pairs) |
-| Frontend | React 19 + Vite app in `frontend/` (42 pages) |
+| Date | 29 September 2026; sales scorecard & incentive feature added 30 September 2026 |
+| Build under test | `main` after merging the Google Workspace sign-in and password-reset-link commits (`59bddaf`, `3165116`, `5e6f03d`), plus the sales scorecard & incentive feature (section 4a) |
+| Backend | FastAPI app in `backend/` (228 API route/method pairs) |
+| Frontend | React 19 + Vite app in `frontend/` (46 pages) |
 | Environment | Windows 11, Python 3.11, Node / Vite 8. All runs used an in-memory data store: no real database was written and no email was sent. |
 | Result | **Pass.** 6 defects found and fixed during this cycle (1 critical, 3 high, 2 medium); no open defects. Open questions are listed in section 7. |
 
@@ -15,17 +15,17 @@
 
 | Check | Scope | Result |
 |---|---|---|
-| Automated backend suite | 304 test cases across 23 areas (section 3) | **304 passed, 0 failed** |
+| Automated backend suite | 313 test cases across 23 areas (section 3) | **313 passed, 0 failed** |
 | Function coverage | Backend functions executed by the suite (measured before the Google sign-in merge) | **571 of 656 (87%)**; the rest explained in section 6 |
-| Access-control sweep | Every API route × (signed out + 7 user types) | **1,776 checks, 0 mismatches, 0 server errors** |
-| Screen sweep | 42 pages × 7 user types in a real browser | **294 page visits, 0 errors, 0 failed API calls, 0 script errors** |
+| Access-control sweep | Every API route × (signed out + 7 user types) | **1,824 checks, 0 mismatches, 0 server errors** |
+| Screen sweep | 42 pages × 7 user types in a real browser (before the 4 scorecard / incentive pages, which were checked by hand as Sales, HR and Super Admin) | **294 page visits, 0 errors, 0 failed API calls, 0 script errors** |
 | Python static analysis | `pyflakes` over `backend/app` | **0 findings** |
 | TypeScript | `tsc -b` | **0 errors** |
 | Frontend lint | `oxlint src` | **0 errors**, 34 advisory warnings (section 7) |
 | Production build | `vite build` | **Succeeds** |
 
 The automated test suite was removed from the repository after this run, as requested. A copy is kept
-outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.zip`.
+outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-30.zip`.
 
 ---
 
@@ -36,7 +36,7 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
    through the HTTP API.
 2. **Function coverage**: Python's profiler hook recorded every backend function that ran during the
    suite, then compared against every function defined in `backend/app`.
-3. **Access-control sweep**: for each of the 222 route/method pairs, a request was sent signed out and
+3. **Access-control sweep**: for each of the 228 route/method pairs, a request was sent signed out and
    as each of the seven user types. Each response was checked against the access rules in
    `rbac_service.ROUTE_RULES`:
    - Signed-out requests to protected routes must get 401.
@@ -68,7 +68,7 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
 | People (employees, interns, directory) | 48 | Create/edit/validate employees and interns, codes, duplicates, masking of bank data, search, bulk import rows |
 | Billing & invoicing | 36 | GST maths per line, intra/inter-state, invoice numbering per branch/FY, proforma vs tax, HR-only tax invoices, quotations and conversion, clients/products, payments and reversal, requests (request → approve/reject), documents, CSV exports, monthly summary, sales person on invoices |
 | Payroll | 28 | Salary calculation, LOP and half days, PF/PT, advances/loans/bonuses/overtime, approve → finalize → lock/unlock → mark paid, payslips, bank export, bulk run |
-| Sales incentive & payroll attendance | 25 | Monthly slabs (20 %–40 %), salary ×3 gate, daily/weekly 5 %, no double pay, monthly replaces daily/weekly, attendance from Start/End Day, half day for a day never ended, Sundays, staff without punches |
+| Sales incentive & payroll attendance | 34 | Monthly slabs (20 %–40 %), salary ×3 eligibility, daily and whole-week 5 %, monthly slab added at ×4, DSC taken off first, DSC Super Admin only and kept per payment, rules HR and above, leaderboard privacy and isolation, Excel / PDF download, finalized payroll protected, recalculation history, attendance from Start/End Day, half day for a day never ended, Sundays, staff without punches, absent before the joining date and after the exit date |
 | Reports | 24 | Individual and company performance reports, exports, validation |
 | Attendance & leave | 22 | Punch classification (present/late/half day/early logout), shift rules, leave balances, paid vs LOP split, overlap checks, approved leave marks attendance |
 | Authentication | 15 | Password + emailed code sign-in, resend, lockouts, one-time codes cannot be replayed or brute-forced, password reset, logout revokes the session, deactivated accounts rejected, rate limits |
@@ -93,31 +93,77 @@ outside the project at `Downloads\rex-hr\Main_Rex_test_suite_backup_2026-09-29.z
 
 ## 4. Access control results
 
-Routes each user type can reach, out of 222. All matched the rules.
+Routes each user type can reach, out of 228. All matched the rules.
 
 | User type | Allowed | Refused |
 |---|---|---|
-| Super Admin | 222 | 0 |
-| HR | 174 | 48 |
-| Admin / Accounting | 125 | 97 |
-| Employee / Sales Person | 72 | 150 |
-| Legal | 59 | 163 |
-| IT | 30 | 192 |
-| Operation Team | 28 | 194 |
+| Super Admin | 228 | 0 |
+| HR | 179 | 49 |
+| Admin / Accounting | 129 | 99 |
+| Employee / Sales Person | 75 | 153 |
+| Legal | 60 | 168 |
+| IT | 31 | 197 |
+| Operation Team | 29 | 199 |
 
 Pages each user type can open (screen sweep; every other page correctly shows "not found"):
 
 | User type | Pages available |
 |---|---|
-| Super Admin | All 42 |
-| HR | 29: all HR pages including payroll and payslips, all billing, notifications, settings |
-| Admin / Accounting | 27: HR overview, employees, leave, sales workspace and sales pages, legal, all billing, users, activity, automations, finance/projects/reports |
-| Employee / Sales Person | 17: own attendance, own leave, broadcasts, sales pages, billing (no clients/payments), notifications, settings |
+| Super Admin | All 46 |
+| HR | 32: all HR pages including payroll, payslips, sales incentives and incentive settings, the sales scorecard, all billing, notifications, settings |
+| Admin / Accounting | 28: HR overview, employees, leave, sales workspace and sales pages (including the scorecard), legal, all billing, users, activity, automations, finance/projects/reports |
+| Employee / Sales Person | 18: own attendance, own leave, broadcasts, sales pages including the scorecard, billing (no clients/payments), notifications, settings |
 | Legal | 6: legal, sales workspace (manages schemes), notifications, settings |
 | Operation Team | 7: broadcasts, customers, contacts, notifications, settings |
 | IT | 6: users, activity log, notifications, settings |
 
 Public pages `/apply` and `/joining` open for everyone, signed in or not.
+
+---
+
+## 4a. Sales scorecard & incentive feature (30 September)
+
+Added: DSC on payments, the collection scorecard and leaderboard, HR incentive rules, Super Admin DSC
+setting, incentive flow into payroll and payslips, recalculation history and the month-end run.
+
+Rules you chose for this feature:
+
+- Collections are recorded by accounts / HR in Billing → Payments, not by sales staff.
+- Daily, weekly and monthly incentives add up.
+- The weekly 5 % is on the whole week.
+
+How it was checked:
+
+- a 71-check end-to-end script on an in-memory copy of the app
+- 9 new cases in the automated suite (now 313)
+- the access sweep (6 new routes)
+- the new pages in a real browser as Sales, HR and Super Admin
+
+| Check (from the feature's validation list) | Result |
+|---|---|
+| DSC ticked / not ticked; ₹10,000 with ₹850 DSC | Pass: gross ₹10,000, DSC ₹850, scorecard ₹9,150 (misses the ₹10,000 daily threshold) |
+| Super Admin changes DSC to ₹1,000, then back | Pass: new payments use the new amount; payments already recorded keep theirs |
+| Who can change DSC / incentive rules | Pass: DSC Super Admin only (HR and Sales refused); rules HR, Admin / Accounting, Super Admin (Sales refused) |
+| Employee isolation (two sales people, different salaries) | Pass: each person's scorecard, incentive and payroll use only payments on invoices naming them |
+| Eligibility at salary ₹30,000: ₹89,999 / ₹90,000 | Pass: Not eligible (₹1 to go) / Eligible |
+| Monthly target: ₹1,19,999 / ₹1,20,000 | Pass: no slab / 20 % slab |
+| Every slab boundary, ₹1,99,999 to ₹8,00,001 | Pass: all 16 values give the expected % |
+| Daily + weekly + monthly add up | Pass: e.g. ₹1,20,000 in one day at salary ₹30,000 = 6,000 + 6,000 + 24,000 |
+| Same payment listed twice | Pass: counted once |
+| Payment removed (correction or refund) | Pass: drops out of the scorecard and any payroll not yet finalized; logged in the activity log |
+| Rules changed | Pass: saved as a new version with who and when, logged; finalized payroll unchanged |
+| Payroll finalized, then more collections | Pass: recalculation refused until unlocked; the finalized incentive stays |
+| Recalculation | Pass: payroll keeps who, when, the incentive before and after, and the rules version |
+| Payslip | Pass: Sales Performance section with gross, DSC, net, eligibility, target, daily / weekly / monthly and total |
+| Leaderboard visibility | Pass: Sales see colleagues' collections and rank but not their target or incentive; HR sees everything plus payroll status |
+| Download (Excel / PDF) | Pass: HR and above; Sales refused |
+| Month-end run (1st of the month) | Pass: records every sales person's final incentive; lists payroll that carries a different figure; running it again updates rather than duplicates |
+| Payments on a cancelled invoice | Not counted (existing rule, not separately tested) |
+| Many sales people / many payments | A period's payments are read once for everyone, not per person; not load-tested |
+| Joins mid-month: incentive | As decided: based only on the payments collected, against the full monthly salary targets |
+| Joins or leaves mid-month: attendance | Pass: every day before the joining date and after the exit date (last working day) is absent (loss of pay), Sundays included, for office and sales staff. A month wholly before joining or after leaving is fully absent; other months are unaffected; joining and leaving in the same month works; clearing the exit date restores the full month; an exit before joining is refused. The payslip form explains the days |
+| Salary changes | Payroll uses the salary structure at calculation time; finalized payroll keeps its copy |
+| Correcting a payment | As decided: remove and record again, both in the activity log |
 
 ---
 

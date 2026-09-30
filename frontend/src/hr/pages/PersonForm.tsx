@@ -46,7 +46,7 @@ function addMonths(iso: string, months: number) {
 const blank = (): Values => ({
   code: '', full_name: '', email: '', mobile_number: '', department: 'SALES', department_other: '', role: '', manager: '',
   // employee
-  gender: 'MALE', branch: 'AMD', date_of_joining: todayISO(), employee_status: 'Active',
+  gender: 'MALE', branch: 'AMD', date_of_joining: todayISO(), date_of_exit: '', employee_status: 'Active',
   base_salary: '50000', hra: '20000', conveyance_allowance: '2000', special_allowance: '5000', professional_tax: '200', pf_opted: true,
   // intern
   intern_gender: 'Other', date_of_birth: '', college_university: '', degree: '', branch_specialization: '', current_semester: '', roll_number: '',
@@ -62,7 +62,7 @@ function fromEmployee(e: Employee): Values {
     code: e.employee_code, full_name: e.full_name, email: e.email, mobile_number: e.mobile_number,
     department: known ? e.department : OTHER, department_other: known ? '' : e.department,
     role: e.designation, manager: e.reporting_manager ?? '', gender: e.gender || 'MALE', branch: e.branch || 'AMD',
-    date_of_joining: e.date_of_joining, employee_status: e.employee_status,
+    date_of_joining: e.date_of_joining, date_of_exit: e.date_of_exit ?? '', employee_status: e.employee_status,
     base_salary: String(e.base_salary), hra: String(e.hra), conveyance_allowance: String(e.conveyance_allowance),
     special_allowance: String(e.special_allowance), professional_tax: String(e.professional_tax), pf_opted: e.pf_opted,
     bank_name: unplaceholder(e.bank_name), account_no: unplaceholder(e.account_no), ifsc_code: unplaceholder(e.ifsc_code),
@@ -114,7 +114,7 @@ function toPayload(kind: Kind, v: Values) {
       employee_code: String(v.code).trim(), full_name: String(v.full_name).trim(), email: String(v.email).trim(),
       mobile_number: String(v.mobile_number).trim(), department: dept, designation: String(v.role).trim(),
       gender: v.gender, branch: v.branch, reporting_manager: String(v.manager).trim(), date_of_joining: v.date_of_joining,
-      base_salary: n('base_salary'), hra: n('hra'), conveyance_allowance: n('conveyance_allowance'),
+      date_of_exit: v.date_of_exit, base_salary: n('base_salary'), hra: n('hra'), conveyance_allowance: n('conveyance_allowance'),
       special_allowance: n('special_allowance'), professional_tax: n('professional_tax'), pf_opted: !!v.pf_opted,
       bank_name: String(v.bank_name).trim(), account_no: String(v.account_no).trim(),
       ifsc_code: String(v.ifsc_code).trim().toUpperCase(), employee_status: v.employee_status,
@@ -141,6 +141,7 @@ function validate(kind: Kind, v: Values) {
   if (!String(v.role).trim()) e.role = kind === 'employee' ? 'Enter a designation.' : 'Enter the internship role.';
   if (kind === 'employee') {
     if (!v.date_of_joining) e.date_of_joining = 'Choose the joining date.';
+    if (v.date_of_exit && v.date_of_joining && v.date_of_exit < v.date_of_joining) e.date_of_exit = 'The exit date can\'t be before the joining date.';
     if (!(Number(v.base_salary) > 0)) e.base_salary = 'Enter the basic salary.';
     for (const k of ['hra', 'conveyance_allowance', 'special_allowance', 'professional_tax']) {
       if (Number(v[k]) < 0) e[k] = 'Amounts cannot be negative.';
@@ -365,6 +366,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
                   <Select label="Gender" {...field('gender')}><option>MALE</option><option>FEMALE</option></Select>
                   <Select label="Branch" {...field('branch')}>{BRANCHES.map((b) => <option key={b}>{b}</option>)}</Select>
                   <Input label="Date of joining" type="date" required {...field('date_of_joining')} />
+                  {editing && <Input label="Date of exit" type="date" hint="Last working day. Payroll leaves the days after it unpaid." {...field('date_of_exit')} />}
                   <Select label="Status" {...field('employee_status')}>
                     {['Active', 'Probation', 'Inactive', ...(editing ? ['Resigned', 'Terminated'] : [])].map((s) => <option key={s}>{s}</option>)}
                   </Select>

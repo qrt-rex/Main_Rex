@@ -11,6 +11,8 @@ import { Card } from '../components/common/Card';
 import { StatCard } from '../components/dashboard/StatCard';
 import { api, ApiError, saveBlob } from '../lib/api';
 import { money, todayISO } from '../lib/format';
+import { useApi } from '../lib/useApi';
+import { getIncentiveConfig } from '../sales/performance';
 import { openBillingPdf } from './pdf';
 
 const PAGE_SIZE = 25;
@@ -61,7 +63,10 @@ export function InvoicesList() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('NEFT/RTGS');
   const [paymentRef, setPaymentRef] = useState('');
+  const [dscDeducted, setDscDeducted] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
+  // The DSC amount set by the Super Admin; the payment keeps it, the sales scorecard counts amount - DSC.
+  const dscAmount = useApi(getIncentiveConfig, [], can('billing.manage')).data?.dsc_amount ?? 0;
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -134,6 +139,10 @@ export function InvoicesList() {
       showToast(`The payment is more than the balance due (${money(selectedInvoice.balance_amount, true)})`, 'error');
       return;
     }
+    if (dscDeducted && dscAmount > amt) {
+      showToast(`The DSC deduction (${money(dscAmount, true)}) is more than this payment`, 'error');
+      return;
+    }
     try {
       setSubmittingPayment(true);
       await api.post('/api/billing/payments', {
@@ -142,11 +151,13 @@ export function InvoicesList() {
         payment_method: paymentMethod,
         reference_number: paymentRef,
         payment_date: todayISO(),
+        dsc_deducted: dscDeducted,
       });
       showToast(`Payment of ₹${amt.toLocaleString('en-IN')} recorded for ${selectedInvoice.invoice_number}`, 'success');
       setSelectedInvoice(null);
       setPaymentAmount('');
       setPaymentRef('');
+      setDscDeducted(false);
       fetchInvoices();
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Error recording payment', 'error');
@@ -413,7 +424,7 @@ export function InvoicesList() {
           <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="font-semibold text-text">Record Payment for {selectedInvoice.invoice_number}</h3>
-              <button onClick={() => setSelectedInvoice(null)} className="text-text-muted hover:text-text">
+              <button onClick={() => { setSelectedInvoice(null); setDscDeducted(false); }} className="text-text-muted hover:text-text">
                 <X size={18} />
               </button>
             </div>
@@ -466,10 +477,19 @@ export function InvoicesList() {
                   className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
                 />
               </div>
+              <div className="rounded-md border border-border bg-surface-secondary/50 p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+                  <input type="checkbox" checked={dscDeducted} onChange={(e) => setDscDeducted(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary)]" />
+                  DSC deducted ({money(dscAmount, true)})
+                </label>
+                <p className="mt-1 text-xs text-text-muted">
+                  Sales scorecard collection: <span className="font-medium text-text">{money(Math.max((parseFloat(paymentAmount) || 0) - (dscDeducted ? dscAmount : 0), 0), true)}</span>
+                </p>
+              </div>
               <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
                 <button
                   type="button"
-                  onClick={() => setSelectedInvoice(null)}
+                  onClick={() => { setSelectedInvoice(null); setDscDeducted(false); }}
                   className="rounded-md border border-border bg-surface px-4 py-2 text-xs font-medium text-text hover:bg-surface-secondary"
                 >
                   Cancel

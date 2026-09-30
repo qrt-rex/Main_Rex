@@ -23,6 +23,9 @@ const Permissions = lazy(() => import('./pages/Permissions').then((m) => ({ defa
 const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
 const Automations = lazy(() => import('./pages/Automations').then((m) => ({ default: m.Automations })));
 const SalesHub = lazy(() => import('./sales/SalesHub').then((m) => ({ default: m.SalesHub })));
+const SalesScorecard = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.SalesScorecard })));
+const HrSalesIncentives = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.HrSalesIncentives })));
+const IncentiveSettings = lazy(() => import('./hr/pages/IncentiveSettings').then((m) => ({ default: m.IncentiveSettings })));
 const HrDashboard = lazy(() => import('./hr/pages/HrDashboard').then((m) => ({ default: m.HrDashboard })));
 const HrEmployees = lazy(() => import('./hr/pages/HrEmployees').then((m) => ({ default: m.HrEmployees })));
 const PersonForm = lazy(() => import('./hr/pages/PersonForm').then((m) => ({ default: m.PersonForm })));
@@ -108,6 +111,8 @@ export default function App() {
                       <Route path={relative('hr-performance', '/hr')} element={guard('hr-performance', <Performance />)} />
                       <Route path={relative('hr-payroll', '/hr')} element={guard('hr-payroll', <Payroll />)} />
                       <Route path={relative('hr-payslips', '/hr')} element={guard('hr-payslips', <Payslips />)} />
+                      <Route path={relative('hr-sales-incentives', '/hr')} element={guard('hr-sales-incentives', <HrSalesIncentives />)} />
+                      <Route path={relative('hr-incentive-settings', '/hr')} element={guard('hr-incentive-settings', <IncentiveSettings />)} />
                       <Route path={relative('hr-advances', '/hr')} element={guard('hr-advances', <Advances />)} />
                       <Route path={relative('hr-broadcasts', '/hr')} element={guard('hr-broadcasts', <Broadcasts />)} />
                       <Route path={relative('hr-import', '/hr')} element={guard('hr-import', <DataImport />)} />
@@ -140,7 +145,9 @@ export default function App() {
                     <Route path="/admin/permissions" element={guard('admin-permissions', <Permissions />)} />
                     <Route path="/admin/activity" element={guard('admin-activity', <AuditLogs />)} />
                     <Route path="/admin/automations" element={guard('admin-automations', <Automations />)} />
+                    <Route path="/admin/sales-config" element={guard('admin-sales-config', <IncentiveSettings />)} />
                     <Route path="/sales/hub" element={guard('sales-hub', <SalesHub />)} />
+                    <Route path="/sales/scorecard" element={guard('sales-scorecard', <SalesScorecard />)} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
                 </Route>

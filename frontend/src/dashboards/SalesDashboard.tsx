@@ -20,6 +20,7 @@ import {
 import { DashboardIntro } from './DashboardShell';
 import { SalesToday } from '../sales/SalesToday';
 import { QuickLeadModal } from '../sales/SalesWidgets';
+import { MyPerformanceCard } from '../sales/MyPerformance';
 import { ClientDocumentFormModal, MyDocumentForms } from './ClientDocumentForm';
 import { PayslipPreview } from '../hr/components';
 import type { TaskItem, WorkspaceSummary } from './api';
@@ -78,6 +79,15 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
 
       {/* 1. Complete Sales Workspace: Calling, Dialer, Schemes, Flyers, Sales Info, Attendance */}
       {can('sales.hub.view') && <SalesToday />}
+
+      {/* Own collections, target and incentive (renders nothing for non-sales accounts) */}
+      {can('sales.scorecard.view') && (
+        <>
+          <SectionTitle>My sales performance</SectionTitle>
+          <MyPerformanceCard />
+          <Link to="/sales/scorecard" className="-mt-2 inline-block text-xs font-medium text-primary hover:underline">Open the scorecard & leaderboard</Link>
+        </>
+      )}
 
       {/* 2. Client & Delivery Operations Overview */}
       {clients && (
