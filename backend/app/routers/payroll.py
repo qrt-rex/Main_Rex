@@ -98,7 +98,8 @@ async def sales_payroll_preview(
     year: int = Query(..., ge=2000, le=2100),
     admin: Dict[str, Any] = Depends(get_current_admin)
 ):
-    """What payroll will take for this employee: attendance from Start/End Day punches and the collection incentive."""
+    """What payroll will take for this employee: attendance from Start/End Day punches (the sales incentive is
+    reported separately in HR > Sales incentives and is not part of salary)."""
     try:
         month_name = require_month_name(month)
     except ValueError as ve:
@@ -106,12 +107,10 @@ async def sales_payroll_preview(
     emp = await get_collection("employees").find_one({"_id": employee_id})
     if not emp:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
-    structure = await PayrollService.get_or_create_salary_structure(employee_id)
     m = MONTH_NAMES.index(month_name) + 1
     return {
         "is_sales": bool(await sales_payroll.sales_user(emp.get("email"))),
         "attendance": await sales_payroll.month_attendance(emp, year, m),
-        "incentive": await sales_payroll.month_incentive(emp, structure, year, m),
     }
 
 @router.post("/calculate-bulk")

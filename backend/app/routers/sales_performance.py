@@ -1,7 +1,7 @@
 """
 Sales performance: the collection scorecard / leaderboard (day, week or month), each sales person's
-own figures, the Excel / PDF download and the incentive rules. Every number comes from
-sales_payroll, the same incentive engine payroll and payslips use.
+own figures, the monthly incentive report (recorded by HR, downloadable as CSV / Excel / PDF) and the
+incentive rules. Every number comes from sales_payroll. The incentive is paid separately from salary.
 
 Salaries are HR-only, so without payroll access a viewer sees other people's collections and rank
 but not their monthly target or incentive (both reveal the salary); their own row is always complete.
@@ -21,6 +21,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.database import get_collection
+from app.routers.billing import _csv_response
 from app.services import sales_payroll as sp
 from app.services.auth_service import get_current_admin
 from app.services.rbac_service import get_user_permissions
@@ -30,7 +31,8 @@ router = APIRouter(prefix="/api/sales-performance", tags=["Sales performance"])
 Period = Literal["day", "week", "month"]
 PERIOD_LABEL = {"day": "Daily", "week": "Weekly", "month": "Monthly"}
 INCENTIVE_KEYS = ("eligible", "target_met", "eligibility", "slab_percent", "daily_incentive", "weekly_incentive",
-                  "monthly_incentive", "incentive", "gate_amount", "target_amount", "target_achievement", "note")
+                  "monthly_incentive", "incentive", "gate_amount", "target_amount", "target_achievement", "note",
+                  "monthly_salary")
 
 
 def _day(value: Optional[str]) -> date:
@@ -82,14 +84,13 @@ async def scorecard(period: Period = "month", date_: Optional[str] = Query(None,
     perms = await get_user_permissions(admin)
     me = str(admin.get("email") or "").strip().lower()
     if "hr.payroll.view" in perms:
-        # Where each person's payroll for the month stands, so HR sees what a recalculation would change.
-        month_name = MONTH_NAMES[day.month - 1]
-        payrolls = {str(p.get("employee_id")): p for p in
-                    await get_collection("payrolls").find({"month": month_name, "year": day.year}).to_list(10000)}
+        # What HR last recorded for the month (the figure the incentive report and payout use).
+        snaps = {s.get("email"): s for s in await get_collection("sales_incentive_snapshots").find(
+            {"year": day.year, "month": MONTH_NAMES[day.month - 1]}).to_list(10000)}
         for r in board["rows"]:
-            rec = payrolls.get(r["employee_id"])
-            r["payroll"] = {"id": str(rec["_id"]), "status": rec.get("status"), "locked": bool(rec.get("is_locked")),
-                            "incentive": (rec.get("earnings") or {}).get("incentive", 0.0)} if rec else None
+            snap = snaps.get(r["email"])
+            r["recorded"] = {"total": snap.get("total_incentive", 0.0), "at": snap.get("calculation_date"),
+                             "by": snap.get("calculated_by"), "recalculations": len(snap.get("history") or [])} if snap else None
     else:
         for r in board["rows"]:
             if r["email"] != me:
@@ -97,7 +98,17 @@ async def scorecard(period: Period = "month", date_: Optional[str] = Query(None,
                 if period == "month":
                     r["target"] = r["achievement"] = None
     board["can_export"] = "sales.scorecard.export" in perms
+    board["can_record"] = "sales.incentives.configure" in perms
     return board
+
+
+@router.post("/incentives/record")
+async def record_incentives(date_: Optional[str] = Query(None, alias="date"), admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Calculate (or recalculate) and store the month's incentive for every sales person."""
+    day = _day(date_)
+    done = await sp.record_month(day.year, day.month, admin.get("email") or admin.get("username") or "admin")
+    return {"month": f"{MONTH_NAMES[day.month - 1]} {day.year}", "recorded": len(done),
+            "total": round(sum(d["total_incentive"] for d in done), 2)}
 
 
 @router.get("/me")
@@ -121,15 +132,30 @@ async def my_performance(date_: Optional[str] = Query(None, alias="date"), admin
 
 @router.get("/export")
 async def export_scorecard(period: Period = "month", date_: Optional[str] = Query(None, alias="date"), department: str = "",
-                           format: Literal["xlsx", "pdf"] = "xlsx", admin: Dict[str, Any] = Depends(get_current_admin)):
+                           format: Literal["xlsx", "pdf", "csv"] = "xlsx", admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Monthly: the incentive report (one row per sales person). Daily / weekly: the leaderboard."""
     board = await build_scorecard(period, _day(date_), department)
-    title = f"Sales scorecard - {PERIOD_LABEL[period]}, {board['from']} to {board['to']}" + (f" - {department}" if department else "")
-    header = ["Rank", "Employee", "Code", "Department", "Gross collection", "DSC", "Net collection", "Target", "Achievement %",
-              f"Eligibility ({board['month']})", "Daily incentive", "Weekly incentive", "Monthly incentive", "Total incentive"]
-    lines = [[r["rank"], r["name"], r["employee_code"], r["department"], r["gross_collection"], r["dsc_deduction"],
-              r["net_collection"], r["target"], r["achievement"], r["incentive"]["eligibility"]["status"],
-              r["incentive"]["daily_incentive"], r["incentive"]["weekly_incentive"], r["incentive"]["monthly_incentive"],
-              r["incentive"]["incentive"]] for r in board["rows"]]
+    suffix = f" - {department}" if department else ""
+    if period == "month":
+        title = f"Sales incentive report - {board['month']}{suffix}"
+        header = ["Employee ID", "Employee name", "Salary", "Month", "Gross collection", "DSC deduction", "Net eligible collection",
+                  "Salary x3 eligibility target", "Salary x4 monthly target", "Daily incentive", "Weekly incentive",
+                  "Monthly incentive", "Total incentive", "Eligibility status"]
+        lines = [[r["employee_code"] or r["email"], r["name"], r["incentive"]["monthly_salary"], board["month"], r["gross_collection"],
+                  r["dsc_deduction"], r["net_collection"], r["incentive"]["gate_amount"], r["incentive"]["target_amount"],
+                  r["incentive"]["daily_incentive"], r["incentive"]["weekly_incentive"], r["incentive"]["monthly_incentive"],
+                  r["incentive"]["incentive"], r["incentive"]["eligibility"]["status"]] for r in board["rows"]]
+        text_cols = {0, 1, 3, 13}
+    else:
+        title = f"Sales scorecard - {PERIOD_LABEL[period]}, {board['from']} to {board['to']}{suffix}"
+        header = ["Rank", "Employee ID", "Employee name", "Department", "Gross collection", "DSC deduction",
+                  "Net eligible collection", "Target", "Target achievement %"]
+        lines = [[r["rank"], r["employee_code"] or r["email"], r["name"], r["department"], r["gross_collection"],
+                  r["dsc_deduction"], r["net_collection"], r["target"], r["achievement"]] for r in board["rows"]]
+        text_cols = {0, 1, 2, 3}
+    name = f"sales-{'incentives' if period == 'month' else 'scorecard'}-{board['from']}.{format}"
+    if format == "csv":
+        return _csv_response(name, header, lines)
     buf = io.BytesIO()
     if format == "xlsx":
         wb = openpyxl.Workbook()
@@ -146,7 +172,7 @@ async def export_scorecard(period: Period = "month", date_: Optional[str] = Quer
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     else:
         money = lambda v: f"{v:,.2f}"  # noqa: E731
-        body = [[str(x) if i in (0, 1, 2, 3, 9) else (f"{x}%" if i == 8 else money(x)) for i, x in enumerate(line)] for line in lines]
+        body = [[str(x) if i in text_cols else money(x) for i, x in enumerate(line)] for line in lines]
         table = Table([header] + body, repeatRows=1)
         table.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a8a")),
                                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
@@ -155,8 +181,7 @@ async def export_scorecard(period: Period = "month", date_: Optional[str] = Quer
         doc.build([Paragraph(title, getSampleStyleSheet()["Heading2"]), Spacer(1, 8), table])
         media = "application/pdf"
     buf.seek(0)
-    return StreamingResponse(buf, media_type=media, headers={
-        "Content-Disposition": f'attachment; filename="sales-scorecard-{period}-{board["from"]}.{format}"'})
+    return StreamingResponse(buf, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 # ---- Incentive rules (HR) and DSC amount (Super Admin) ----

@@ -23,6 +23,9 @@ const Permissions = lazy(() => import('./pages/Permissions').then((m) => ({ defa
 const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
 const Automations = lazy(() => import('./pages/Automations').then((m) => ({ default: m.Automations })));
 const SalesHub = lazy(() => import('./sales/SalesHub').then((m) => ({ default: m.SalesHub })));
+const SalesLeads = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesLeads })));
+const SalesCustomers = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesCustomers })));
+const SalesDeals = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesDeals })));
 const SalesScorecard = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.SalesScorecard })));
 const HrSalesIncentives = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.HrSalesIncentives })));
 const IncentiveSettings = lazy(() => import('./hr/pages/IncentiveSettings').then((m) => ({ default: m.IncentiveSettings })));
@@ -148,6 +151,9 @@ export default function App() {
                     <Route path="/admin/sales-config" element={guard('admin-sales-config', <IncentiveSettings />)} />
                     <Route path="/sales/hub" element={guard('sales-hub', <SalesHub />)} />
                     <Route path="/sales/scorecard" element={guard('sales-scorecard', <SalesScorecard />)} />
+                    <Route path="/sales/leads" element={guard('sales-leads', <SalesLeads />)} />
+                    <Route path="/sales/customers" element={guard('sales-customers', <SalesCustomers />)} />
+                    <Route path="/sales/deals" element={guard('sales-deals', <SalesDeals />)} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
                 </Route>

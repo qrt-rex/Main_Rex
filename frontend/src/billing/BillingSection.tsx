@@ -9,7 +9,7 @@ const TABS = [
   { path: '/billing/quotations', label: 'Quotations', icon: ScrollText, perm: 'billing.view' },
   { path: '/billing/clients', label: 'Clients', icon: Users, perm: 'billing.manage' },
   { path: '/billing/payments', label: 'Payments', icon: Banknote, perm: 'billing.manage' },
-  { path: '/billing/reports', label: 'GSTR & Reports', icon: BarChart3, perm: 'billing.view' },
+  { path: '/billing/reports', label: 'GSTR & Reports', icon: BarChart3, perm: 'billing.gstr' }, // Super Admin, Admin / Accounting, Legal
   { path: '/billing/documents', label: 'Documents', icon: FolderOpen, perm: 'billing.view' },
 ];
 

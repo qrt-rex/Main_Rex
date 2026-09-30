@@ -9,6 +9,11 @@ export interface Lead {
   phone: string;
   email: string;
   city: string;
+  address?: string;
+  state?: string;
+  gstin?: string;
+  customer_id?: string | null;
+  created_by?: string;
   source: string;
   service_interest: string;
   notes: string;

@@ -84,7 +84,7 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("sales.hub.manage", "Add & edit leads, schemes, flyers/material and sales information"),
         ("sales.scorecard.view", "Sales scorecard & leaderboard (others' targets and incentives need payroll access)"),
         ("sales.scorecard.export", "Download the sales scorecard (Excel / PDF)"),
-        ("sales.incentives.configure", "Change sales incentive rules (thresholds, %, salary multipliers, slabs)"),
+        ("sales.incentives.configure", "Sales incentive rules (thresholds, %, multipliers, slabs) and recording each month's incentives"),
         ("sales.dsc.manage", "Change the DSC deduction amount"),
     ]),
     ("legal", "Legal", [
@@ -102,6 +102,8 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("billing.create", "Create & edit proforma invoices and quotations"),
         ("billing.tax_invoice", "Issue & edit tax invoices (without it, only proforma invoices)"),
         ("billing.manage", "Manage billing clients, payments & settings"),
+        ("billing.all_invoices", "See every invoice, quotation, payment and customer (without it: only your own)"),
+        ("billing.gstr", "GSTR returns and company billing reports"),
     ]),
     ("administration", "Administration", [
         ("users.manage", "Manage users"),
@@ -133,10 +135,10 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
-              "sales.hub.manage", "sales.scorecard.export"],
-    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit",
+              "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr"],
+    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "billing.all_invoices", "automations.manage", "documents.submit",
            "sales.scorecard.view", "sales.scorecard.export", "sales.incentives.configure"],
-    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage"],
+    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "billing.gstr"],
     "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
            "users.manage", "audit.view"],
@@ -317,6 +319,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/billing/quotations/{quotation_id}/convert"): "billing.create",
     ("GET", "/api/billing/clients"): "billing.view",
     ("POST", "/api/billing/clients"): "billing.manage",
+    ("POST", "/api/billing/clients/from-lead/{lead_id}"): "billing.create",  # own leads only, checked inside
     ("GET", "/api/billing/clients/{client_id}"): "billing.view",
     ("PUT", "/api/billing/clients/{client_id}"): "billing.manage",
     ("DELETE", "/api/billing/clients/{client_id}"): "billing.manage",
@@ -328,9 +331,9 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/billing/payments"): "billing.view",
     ("POST", "/api/billing/payments"): "billing.manage",
     ("GET", "/api/billing/dashboard/metrics"): "billing.view",
-    ("GET", "/api/billing/reports/gstr1"): "billing.view",
-    ("GET", "/api/billing/reports/aging"): "billing.view",
-    ("GET", "/api/billing/sales-people"): "billing.view",
+    ("GET", "/api/billing/reports/gstr1"): "billing.gstr",
+    ("GET", "/api/billing/reports/aging"): "billing.gstr",
+    ("GET", "/api/billing/deals"): "sales.deals.view",  # own invoices as deals, collection from payments
     ("GET", "/api/billing/requests"): "billing.view",
     ("POST", "/api/billing/requests"): "billing.view",
     ("GET", "/api/billing/requests/{request_id}"): "billing.view",
@@ -342,8 +345,8 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("DELETE", "/api/billing/documents/{document_id}"): "billing.manage",
     ("DELETE", "/api/billing/payments/{payment_id}"): "billing.manage",
     ("GET", "/api/billing/export/invoices.csv"): "billing.view",
-    ("GET", "/api/billing/reports/gst-register.csv"): "billing.view",
-    ("GET", "/api/billing/reports/monthly"): "billing.view",
+    ("GET", "/api/billing/reports/gst-register.csv"): "billing.gstr",
+    ("GET", "/api/billing/reports/monthly"): "billing.gstr",
     # Legal Records & Compliance
     ("GET", "/api/legal/records"): "legal.view",
     ("POST", "/api/legal/records"): "legal.view",
@@ -373,7 +376,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/sales-hub/leads/{lead_id}/calls"): "sales.hub.view",
     ("GET", "/api/sales-hub/materials/{material_id}/file"): "sales.hub.view",
     ("GET", "/api/sales-hub/assignees"): "sales.hub.manage",
-    ("GET", "/api/sales-hub/leads"): "sales.hub.manage",
+    ("GET", "/api/sales-hub/leads"): "sales.hub.view",  # managers: all; others: their own
     ("POST", "/api/sales-hub/leads"): "sales.hub.view",
     ("POST", "/api/sales-hub/leads/import"): "sales.hub.manage",
     ("PUT", "/api/sales-hub/leads/{lead_id}"): "sales.hub.manage",
@@ -393,6 +396,7 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/sales-performance/config"): AUTHENTICATED,  # the rules are no secret; the payment form needs the DSC amount
     ("PUT", "/api/sales-performance/config"): "sales.incentives.configure",
     ("PUT", "/api/sales-performance/config/dsc"): "sales.dsc.manage",
+    ("POST", "/api/sales-performance/incentives/record"): "sales.incentives.configure",
     # Automations
     ("GET", "/api/automations"): "automations.manage",
     ("PUT", "/api/automations/settings"): "automations.manage",
@@ -457,6 +461,10 @@ ROLE_RESERVED_PERMISSIONS: Dict[str, Set[str]] = {
     "sales.scorecard.export": {"superadmin", "admin", "hr"},
     "sales.incentives.configure": {"superadmin", "admin", "hr"},
     "sales.dsc.manage": {"superadmin"},
+    # Everyone else (Employees / Sales Persons) sees only the invoices, quotations, payments and customers
+    # that are theirs. GSTR and company billing reports: Super Admin, Admin / Accounting and Legal.
+    "billing.all_invoices": {"superadmin", "admin", "hr"},
+    "billing.gstr": {"superadmin", "admin", "legal"},
 }
 # Everyone else sees only their own attendance, whatever permissions they hold.
 FULL_ATTENDANCE_ROLES = {"superadmin", "admin", "hr"}

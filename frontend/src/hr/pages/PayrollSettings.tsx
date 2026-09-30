@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../../lib/phone';
 import { Eye, PlugZap, Save } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../lib/useApi';
@@ -62,7 +63,8 @@ function Rules({ settings, onSaved }: { settings: Settings; onSaved: (s: Setting
         <div className="grid gap-4 p-4 sm:grid-cols-2">
           <Input label="Legal name" required value={v.company_name} onChange={set('company_name')} />
           <Input label="Official email" type="email" required value={v.company_email} onChange={set('company_email')} />
-          <Input label="Phone" value={v.company_phone} onChange={set('company_phone')} />
+          <Input label="Phone" {...phoneInput} value={v.company_phone} onChange={(e) => setV((s) => ({ ...s, company_phone: phoneDigits(e.target.value) }))}
+            error={isPhoneOk(v.company_phone) ? undefined : PHONE_ERROR} />
           <Input label="Currency" value={v.currency} onChange={set('currency')} />
           <Input label="Registered address" value={v.company_address} onChange={set('company_address')} className="sm:col-span-2" />
         </div>

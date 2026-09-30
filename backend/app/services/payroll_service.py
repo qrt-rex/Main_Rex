@@ -307,13 +307,9 @@ class PayrollService:
         # If direct bonus override provided in request, inject it
         if req.bonus_amount and req.bonus_amount > 0:
             db_bonuses.append({"amount": req.bonus_amount, "type": "Performance Bonus"})
-        # Sales collection incentive is worked out from client payments unless HR types an amount in.
-        incentive_details = None
-        if req.incentive_amount is None:
-            incentive_details = await sales_payroll.month_incentive(emp, structure, req.year, month_no)
-            if incentive_details and incentive_details["incentive"] > 0:
-                db_bonuses.append({"amount": incentive_details["incentive"], "type": "Sales Incentive"})
-        elif req.incentive_amount > 0:
+        # The sales collection incentive is NOT added to salary: HR works it out and exports it separately
+        # (HR > Sales incentives). Only an amount HR types in on purpose reaches the slip.
+        if req.incentive_amount and req.incentive_amount > 0:
             db_bonuses.append({"amount": req.incentive_amount, "type": "Sales Incentive"})
 
         manual_adjs = [m.model_dump() for m in (req.manual_adjustments or [])]
@@ -383,7 +379,7 @@ class PayrollService:
             "email_sent": False,
             "email_sent_at": None,
             "remarks": req.remarks or "",
-            "incentive_details": incentive_details,
+            "incentive_details": None,  # the sales incentive is reported separately, never part of salary
             "attendance_source": "start_end_day" if derived else "manual",
             "created_at": now_str,
             "updated_at": now_str
@@ -406,8 +402,7 @@ class PayrollService:
                 # Sales incentive audit trail: who recalculated, when, and what it was before and after.
                 record["incentive_history"] = [*(existing.get("incentive_history") or []), {
                     "at": now_str, "by": user_email, "previous": previous_incentive,
-                    "new": record["earnings"].get("incentive", 0.0),
-                    "config_version": (incentive_details or {}).get("config_version")}]
+                    "new": record["earnings"].get("incentive", 0.0)}]
                 await payroll_col.update_one({"_id": existing["_id"]}, {"$set": record})
                 record["_id"] = str(existing["_id"])
                 record["id"] = str(existing["_id"])
@@ -713,7 +708,7 @@ class PayrollService:
             "total_deductions": rec.get("total_deductions", 0.0),
             "net_salary": rec.get("net_salary", 0.0),
             "net_salary_words": rec.get("net_salary_words", ""),
-            "incentive_details": rec.get("incentive_details"),  # the sales performance block on the payslip
+            "incentive_details": rec.get("incentive_details"),  # only payslips from before incentives left salary
             "payment_status": "Pending",
             "created_at": now_str
         }

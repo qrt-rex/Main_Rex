@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Banknote, Download, FileText, Landmark, MoreHorizontal, Printer, Receipt, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useApi, useDebounced } from '../../lib/useApi';
@@ -99,6 +99,7 @@ function Register({ onPreview }: { onPreview: (id: string) => void }) {
 
 function Generator({ initialEmployee, onGenerated }: { initialEmployee: string | null; onGenerated: (id: string) => void }) {
   const { showToast } = useToast();
+  const { can } = useAuth();
   const { employees, available } = useEmployeeOptions();
   const [v, setV] = useState({ employee_id: initialEmployee ?? '', month: currentMonth() as string, year: String(currentYear()), working_days: '30', paid_days: '30', lop_days: '0', bonus: '0', other_deductions: '0' });
   const [calc, setCalc] = useState<SalaryCalc | null>(null);
@@ -109,7 +110,7 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
   const inputs = useDebounced(v, 250);
   const [sales, setSales] = useState<SalesPayrollPreview | null>(null);
 
-  // Sales staff: fill the days from their Start/End Day punches; the incentive is added by the server.
+  // Sales staff: fill the days from their Start/End Day punches. Their incentive is paid separately (HR > Sales incentives).
   useEffect(() => {
     if (!v.employee_id || Number(v.year) < 2000) return;
     let cancelled = false;
@@ -133,7 +134,7 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
     let cancelled = false;
     calculateSalary({
       base_salary: emp.base_salary, hra: emp.hra, conveyance_allowance: emp.conveyance_allowance, special_allowance: emp.special_allowance,
-      pf_opted: emp.pf_opted, professional_tax: emp.professional_tax || 200, bonus: (Number(inputs.bonus) || 0) + (sales?.incentive?.incentive ?? 0),
+      pf_opted: emp.pf_opted, professional_tax: emp.professional_tax || 200, bonus: Number(inputs.bonus) || 0,
       other_deductions: Number(inputs.other_deductions) || 0, working_days: Number(inputs.working_days) || 30, lop_days: Number(inputs.lop_days) || 0,
     }).then((c) => !cancelled && setCalc(c)).catch(() => !cancelled && setCalc(null));
     return () => { cancelled = true; };
@@ -174,7 +175,7 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
           <Input label="Working days" type="number" min={1} max={31} value={v.working_days} onChange={set('working_days')} />
           <Input label="Paid days" type="number" min={0} max={31} value={v.paid_days} onChange={set('paid_days')} />
           <Input label="Loss-of-pay days" type="number" min={0} max={31} value={v.lop_days} onChange={set('lop_days')} />
-          <Input label="Bonus / incentive (₹)" type="number" min={0} value={v.bonus} onChange={set('bonus')} />
+          <Input label="Bonus (₹)" type="number" min={0} value={v.bonus} onChange={set('bonus')} />
           <Input label="Other deductions (₹)" type="number" min={0} value={v.other_deductions} onChange={set('other_deductions')} />
         </div>
         {!!(sales?.attendance?.before_joining_days || sales?.attendance?.after_exit_days) && (
@@ -188,29 +189,16 @@ function Generator({ initialEmployee, onGenerated }: { initialEmployee: string |
       <div className="space-y-4">
         {sales?.is_sales && v.employee_id && (
           <Card>
-            <CardHeader title="Sales attendance & incentive" description="From Start/End Day and client collections" />
+            <CardHeader title="Sales attendance" description="From Start / End Day" />
             <dl className="divide-y divide-border text-sm">
               {sales.attendance && ([['Full days', sales.attendance.full_days], ['Half days', sales.attendance.half_days], ['Absent', `${sales.attendance.absent_days}${sales.attendance.before_joining_days ? ` · ${sales.attendance.before_joining_days} before joining` : ''}${sales.attendance.after_exit_days ? ` · ${sales.attendance.after_exit_days} after exit` : ''}`],
                 ['Leave (paid / unpaid)', `${sales.attendance.paid_leave_days} / ${sales.attendance.unpaid_leave_days}`], ['Late marks', sales.attendance.late_count]] as const).map(([k, n]) => (
                 <div key={k} className="flex justify-between px-4 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{n}</dd></div>
               ))}
-              {sales.incentive && ([
-                ['Gross collection', money(sales.incentive.gross_collection)],
-                ['DSC deducted', `− ${money(sales.incentive.dsc_deduction)}`],
-                ['Net eligible collection', money(sales.incentive.net_collection)],
-                ['Eligibility', `${sales.incentive.eligibility.status} (needs ${money(sales.incentive.gate_amount)})`],
-                ['Monthly target', `${money(sales.incentive.target_amount)} · ${sales.incentive.target_achievement}%`],
-                ['Daily incentive', money(sales.incentive.daily_incentive)],
-                ['Weekly incentive', money(sales.incentive.weekly_incentive)],
-                [`Monthly incentive${sales.incentive.slab_percent != null ? ` (${sales.incentive.slab_percent}%)` : ''}`, money(sales.incentive.monthly_incentive)],
-              ] as const).map(([k, n]) => (
-                <div key={k} className="flex justify-between px-4 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{n}</dd></div>
-              ))}
-              {sales.incentive && (
-                <div className="flex justify-between px-4 py-2 font-medium"><dt className="text-text">Total incentive (added automatically)</dt><dd className="tabular-nums text-success">{money(sales.incentive.incentive)}</dd></div>
-              )}
             </dl>
-            {sales.incentive && <p className="px-4 py-3 text-xs text-text-muted">{sales.incentive.note}</p>}
+            <p className="px-4 py-3 text-xs text-text-muted">
+              The sales incentive is not part of salary. {can('hr.payroll.view') && <Link to="/hr/sales-incentives" className="font-medium text-primary hover:underline">See HR &gt; Sales incentives</Link>}
+            </p>
           </Card>
         )}
         <Card className="lg:sticky lg:top-20">

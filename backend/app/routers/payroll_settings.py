@@ -6,6 +6,7 @@ from app.services.audit_service import AuditService
 from app.services.email_service import EmailService
 from app.database import get_collection, fix_id
 from app.schemas.advanced_payroll import CompanyPayrollSettings, AuditLogEntry, EmailLogResponse
+from app.utils.validators import optional_phone
 from datetime import datetime
 
 logger = logging.getLogger("rexera.router.settings")
@@ -41,6 +42,10 @@ async def update_payroll_settings(
     existing = await col.find_one({"type": "company_settings"})
     
     data = req.model_dump()
+    try:
+        data["company_phone"] = optional_phone(data.get("company_phone"), "Company phone")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     # Preserve existing password if the masked placeholder (or nothing) was submitted
     if data.get("smtp", {}).get("smtp_password") in ("••••••••", None):
         data["smtp"]["smtp_password"] = ((existing or {}).get("smtp") or {}).get("smtp_password", "")

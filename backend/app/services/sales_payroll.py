@@ -7,8 +7,8 @@ Payroll inputs for sales staff, taken from what they do in the Sales workspace a
   sales person. Every figure uses the NET collection: the payment minus the DSC deducted when the
   payment was recorded (the gross amount stays on the payment too).
 
-This module is the one incentive engine: payroll, payslips, the scorecard, the leaderboard and the
-exports all call it. Rules come from the HR incentive settings (defaults in brackets); monthly
+This module is the one incentive engine: the scorecard, the leaderboard, the monthly incentive report and
+its exports all call it. The incentive is paid separately: it is never added to salary or payslips. Rules come from the HR incentive settings (defaults in brackets); monthly
 salary = the standard gross of the salary structure:
   * eligibility: net month collection >= salary x eligibility multiplier (3), else nothing is paid
   * daily:   every day with net collection >= daily threshold (10,000) pays daily % (5) of that day
@@ -200,6 +200,40 @@ def period_range(period: str, day: date) -> Tuple[date, date]:
     return month_range(day.year, day.month)
 
 
+async def record_month(year: int, month: int, actor: str) -> List[Dict[str, Any]]:
+    """Works out and stores every sales person's incentive for the month (sales_incentive_snapshots). Recording
+    again (a recalculation) keeps a history line: who, when, and the total before and after."""
+    cfg = await get_config()
+    got = await collections(*month_range(year, month))
+    col = get_collection("sales_incentive_snapshots")
+    now = datetime.utcnow().isoformat()
+    out = []
+    for p in await sales_people():
+        inc = compute_incentive(got.get(p["email"], []), p["salary"], cfg)
+        snap_id = f"{year}-{month:02d}-{p['email']}"
+        doc = {"employee_id": p["employee_id"], "employee_code": p["employee_code"], "employee_name": p["name"],
+               "email": p["email"], "month": calendar.month_name[month], "year": year, "salary": inc["monthly_salary"],
+               "gross_collection": inc["gross_collection"], "dsc_deduction": inc["dsc_deduction"],
+               "net_collection": inc["net_collection"], "eligibility_target": inc["gate_amount"],
+               "monthly_target": inc["target_amount"], "daily_incentive": inc["daily_incentive"],
+               "weekly_incentive": inc["weekly_incentive"], "monthly_incentive": inc["monthly_incentive"],
+               "total_incentive": inc["incentive"], "eligibility_status": inc["eligibility"]["status"],
+               "calculation_date": now, "calculated_by": actor, "config_version": inc["config_version"], "details": inc}
+        old = await col.find_one({"_id": snap_id})
+        doc["history"] = [*((old or {}).get("history") or []),
+                          *([{"at": now, "by": actor, "previous_total": old.get("total_incentive", 0.0),
+                              "new_total": inc["incentive"]}] if old else [])]
+        if old:
+            await col.update_one({"_id": snap_id}, {"$set": doc})
+        else:
+            await col.insert_one({"_id": snap_id, **doc})
+        out.append(doc)
+    await AuditService.log_action(user_email=actor, user_role="", action="Recorded sales incentives",
+                                  entity_type="sales_incentives", entity_id=f"{year}-{month:02d}",
+                                  new_value={"people": len(out), "total": _r(sum(d["total_incentive"] for d in out))})
+    return out
+
+
 async def sales_user(email: Optional[str]) -> Optional[Dict[str, Any]]:
     """The login account behind an employee, if it is a sales account."""
     if not email:
@@ -228,17 +262,6 @@ async def sales_people() -> List[Dict[str, Any]]:
                        "employee_id": str(emp["_id"]) if emp else "", "employee_code": emp.get("employee_code", ""),
                        "department": emp.get("department") or "Sales", "salary": monthly_salary(structure)})
     return people
-
-
-async def month_incentive(emp: Dict[str, Any], structure: Dict[str, Any], year: int, month: int) -> Optional[Dict[str, Any]]:
-    """None for staff who are not sales accounts (they earn no collection incentive)."""
-    if not await sales_user(emp.get("email")):
-        return None
-    start, end = month_range(year, month)
-    mine = (await collections(start, end, emp["email"])).get(emp["email"].strip().lower(), [])
-    result = compute_incentive(mine, monthly_salary(structure), await get_config())
-    result["calculated_at"] = datetime.utcnow().isoformat()
-    return result
 
 
 async def month_attendance(emp: Dict[str, Any], year: int, month: int, today: Optional[date] = None) -> Optional[Dict[str, Any]]:

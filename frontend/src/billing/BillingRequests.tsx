@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import { useNavigate } from 'react-router-dom';
 import { Inbox, Plus, Trash2, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -64,6 +65,7 @@ function NewRequestModal({ open, onClose, onSaved }: { open: boolean; onClose: (
     e.preventDefault();
     setError('');
     if (!f.billing_name.trim() || !f.billing_address.trim()) return setError('Enter the client name and address.');
+    if (!isPhoneOk(f.billing_phone)) return setError(`Phone: ${PHONE_ERROR}`);
     if (f.client_gstin && !/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(f.client_gstin)) return setError('The GSTIN should be 15 characters, e.g. 24ABCDE1234F1Z5');
     if (rows.some((r) => !r.particulars.trim() || !(Number(r.quantity) > 0) || r.rate === '' || Number(r.rate) < 0)) return setError('Complete every item row.');
     setBusy(true);
@@ -105,7 +107,7 @@ function NewRequestModal({ open, onClose, onSaved }: { open: boolean; onClose: (
           </div>
           <div>
             <label className={labelCls}>Phone</label>
-            <input className={inputCls} value={f.billing_phone} onChange={set('billing_phone')} />
+            <input className={inputCls} {...phoneInput} value={f.billing_phone} onChange={(e) => setF((x) => ({ ...x, billing_phone: phoneDigits(e.target.value) }))} />
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Billing address *</label>

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../../lib/phone';
 import { ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { Button } from '../../components/common/Button';
@@ -96,7 +97,8 @@ export function JoiningPortal() {
       need('full_name', 'Enter your full legal name.');
       need('parent_name', "Enter your father's or mother's name.");
       need('date_of_birth', 'Enter your date of birth.');
-      if (f.mobile_number.replace(/\D/g, '').length < 10) er.mobile_number = 'Enter a 10-digit mobile number.';
+      if (!f.mobile_number || !isPhoneOk(f.mobile_number)) er.mobile_number = 'Enter a 10-digit mobile number.';
+      if (!isPhoneOk(f.alternate_mobile)) er.alternate_mobile = PHONE_ERROR;
       need('permanent_address', 'Enter your permanent address.');
       need('correspondence_address', 'Enter your current address.');
     }
@@ -104,7 +106,7 @@ export function JoiningPortal() {
       if (!/^\d{12}$/.test(f.aadhaar_number.replace(/[\s-]/g, ''))) er.aadhaar_number = 'Aadhaar must be exactly 12 digits.';
       if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(f.pan_number.trim().toUpperCase())) er.pan_number = 'PAN format is 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).';
       need('emergency_contact_name', 'Enter an emergency contact.');
-      if (f.emergency_contact_number.replace(/\D/g, '').length < 10) er.emergency_contact_number = 'Enter a 10-digit phone number.';
+      if (!f.emergency_contact_number || !isPhoneOk(f.emergency_contact_number)) er.emergency_contact_number = 'Enter a 10-digit phone number.';
       need('emergency_contact_relation', 'Enter the relationship.');
       need('bank_name', 'Enter your bank name.');
       need('account_no', 'Enter your account number.');
@@ -212,8 +214,8 @@ export function JoiningPortal() {
             <Select label="Marital status" value={f.marital_status} onChange={set('marital_status')}>{['Single', 'Married', 'Other'].map((x) => <option key={x}>{x}</option>)}</Select>
             <Input label="Nationality" value={f.nationality} onChange={set('nationality')} />
             <Select label="Blood group" value={f.blood_group} onChange={set('blood_group')}>{['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((x) => <option key={x}>{x}</option>)}</Select>
-            <Input label="Mobile number" type="tel" required value={f.mobile_number} onChange={set('mobile_number')} error={errors.mobile_number} />
-            <Input label="Alternate number" type="tel" value={f.alternate_mobile} onChange={set('alternate_mobile')} />
+            <Input label="Mobile number" {...phoneInput} required value={f.mobile_number} onChange={(e) => setF((s) => ({ ...s, mobile_number: phoneDigits(e.target.value) }))} error={errors.mobile_number} />
+            <Input label="Alternate number" {...phoneInput} value={f.alternate_mobile} onChange={(e) => setF((s) => ({ ...s, alternate_mobile: phoneDigits(e.target.value) }))} error={errors.alternate_mobile} />
             <Input label="Email" value={email} disabled hint="The address your invitation was sent to." />
             <Textarea label="Permanent address" required value={f.permanent_address} onChange={set('permanent_address')} error={errors.permanent_address} />
             <Textarea label="Current address" required value={f.correspondence_address} onChange={set('correspondence_address')} error={errors.correspondence_address} />
@@ -228,7 +230,7 @@ export function JoiningPortal() {
             <SectionTitle>Emergency contact</SectionTitle>
             <div className="grid gap-4 sm:grid-cols-3">
               <Input label="Name" required value={f.emergency_contact_name} onChange={set('emergency_contact_name')} error={errors.emergency_contact_name} />
-              <Input label="Phone" type="tel" required value={f.emergency_contact_number} onChange={set('emergency_contact_number')} error={errors.emergency_contact_number} />
+              <Input label="Phone" {...phoneInput} required value={f.emergency_contact_number} onChange={(e) => setF((s) => ({ ...s, emergency_contact_number: phoneDigits(e.target.value) }))} error={errors.emergency_contact_number} />
               <Input label="Relationship" required placeholder="e.g. Spouse / Father" value={f.emergency_contact_relation} onChange={set('emergency_contact_relation')} error={errors.emergency_contact_relation} />
             </div>
             <SectionTitle>Salary bank account</SectionTitle>

@@ -93,6 +93,22 @@ def require_mobile(value: str) -> str:
     return res
 
 
+def optional_phone(value: Optional[str], label: str = "Phone number") -> str:
+    """Blank stays blank; anything else must be a 10-digit number (spaces, dashes and a +91 / 0 prefix are dropped).
+    Landlines count too (STD code + number is 10 digits), so no mobile-only first digit is required."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    digits = re.sub(r"[\s+().-]", "", raw)
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+    if not re.fullmatch(r"\d{10}", digits):
+        raise ValueError(f"{label} must be a 10-digit number.")
+    return digits
+
+
 def optional_ifsc(value: Optional[str]) -> str:
     """Blank is allowed (bank details can be added later); anything else must be a real IFSC."""
     v = (value or "").strip().upper()

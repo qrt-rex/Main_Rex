@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { phoneDigits, phoneInput } from '../../lib/phone';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet, GraduationCap, Upload, X } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
@@ -352,7 +353,8 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
               <Input label={kind === 'employee' ? 'Employee code' : 'Intern code'} {...field('code')} disabled={editing} hint={editing ? undefined : 'Leave blank to auto-generate'} />
               <Input label="Full name" required {...field('full_name')} placeholder="e.g. Aditi Rao" />
               <Input label="Email" type="email" required {...field('email')} placeholder="name@company.com" />
-              <Input label="Mobile number" type="tel" required {...field('mobile_number')} placeholder="10-digit mobile" />
+              <Input label="Mobile number" required {...field('mobile_number')} {...phoneInput}
+                onChange={(e) => setValues((s) => ({ ...s, mobile_number: phoneDigits(e.target.value) }))} />
               <Select label="Department" required {...field('department')}>
                 {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
                 <option value={OTHER}>Other…</option>

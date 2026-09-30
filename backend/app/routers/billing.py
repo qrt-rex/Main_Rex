@@ -18,7 +18,7 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import get_current_admin
 from app.services import sales_payroll
 from app.services.rbac_service import get_user_permissions, has_role
-from app.utils.validators import search_pattern
+from app.utils.validators import optional_phone, search_pattern
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -247,6 +247,8 @@ def validate_client(client: Any) -> Dict[str, Any]:
         if not GSTIN_RE.match(gstin):
             raise HTTPException(status_code=422, detail=f"GSTIN {gstin} is not valid (15 characters, e.g. 24ABCDE1234F1Z5).")
         client = {**client, "gstin": gstin}
+    if client.get("phone"):
+        client = {**client, "phone": _phone(client["phone"], "Client phone")}
     return client
 
 
@@ -496,25 +498,64 @@ async def _require_tax_invoice_access(admin: dict, invoice_type: str) -> None:
     if "billing.tax_invoice" not in await get_user_permissions(admin):
         raise HTTPException(status_code=403, detail="Only HR can issue or edit tax invoices. You can issue proforma invoices.")
 
-async def _resolve_sales_person(email: Optional[str], admin: dict) -> Dict[str, str]:
-    """The sales account a sale (and its collections) is credited to: the one named, else the creator if they are sales."""
-    email = str(email or "").strip().lower()
-    if not email and has_role(admin, "sales"):
-        email = str(admin.get("email") or "").strip().lower()
-    if not email:
-        return {"sales_person_email": "", "sales_person_name": ""}
-    user = await sales_payroll.sales_user(email)
-    if not user:
-        raise HTTPException(status_code=422, detail=f"{email} is not a sales account.")
-    return {"sales_person_email": email, "sales_person_name": user.get("username") or email}
+# ---- Ownership: an invoice belongs to the person who generated it ----
+# Created directly: the signed-in user. Issued from an invoice request: the requester. Converted from a
+# quotation: whoever made the quotation. Never taken from the request body. When the owner is a sales
+# account, the invoice's collections are credited to them (scorecard and incentive).
 
-@router.get("/sales-people")
-async def list_sales_people(admin: dict = Depends(get_current_admin)):
-    """Sales accounts an invoice can be credited to."""
-    users = [u for u in await get_collection("admins").find({}).to_list(2000)
-             if u.get("is_active", True) and has_role(u, "sales")]
-    items = [{"email": str(u.get("email") or "").lower(), "name": u.get("username") or u.get("email", "")} for u in users]
-    return {"success": True, "items": sorted(items, key=lambda i: i["name"].lower())}
+def _me(admin: dict) -> str:
+    return str(admin.get("email") or admin.get("username") or "").strip().lower()
+
+
+async def _sees_all(admin: dict) -> bool:
+    """HR, Admin / Accounting and Super Admin see every invoice; everyone else only their own."""
+    return "billing.all_invoices" in await get_user_permissions(admin)
+
+
+def _mine(admin: dict) -> Dict[str, Any]:
+    me = _me(admin)
+    return {"$or": [{"owner_email": me}, {"sales_person_email": me}]}
+
+
+def _is_mine(doc: Dict[str, Any], admin: dict) -> bool:
+    me = _me(admin)
+    return bool(me) and me in (str(doc.get("owner_email") or "").lower(), str(doc.get("sales_person_email") or "").lower())
+
+
+async def _scoped(query: Dict[str, Any], admin: dict) -> Dict[str, Any]:
+    """An invoice query limited to what this person may see: their own and not cancelled, unless they see all."""
+    if await _sees_all(admin):
+        return query
+    return {"$and": [query, _mine(admin), {"status": {"$ne": "cancelled"}}]}
+
+
+async def _invoice_for(invoice_id: str, admin: dict) -> Dict[str, Any]:
+    inv = await get_collection("billing_invoices").find_one(
+        {"$or": [{"id": invoice_id}, {"_id": invoice_id}, {"invoice_number": invoice_id}]})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if not await _sees_all(admin) and not (_is_mine(inv, admin) and inv.get("status") != "cancelled"):
+        raise HTTPException(status_code=403, detail="You can only open your own invoices.")
+    return inv
+
+
+async def _owner_fields(owner_email: str) -> Dict[str, str]:
+    owner_email = owner_email.strip().lower()
+    user = await get_collection("admins").find_one(
+        {"email": {"$regex": f"^{re.escape(owner_email)}$", "$options": "i"}}) if owner_email else None
+    name = (user or {}).get("username") or owner_email
+    sales = bool(user) and user.get("is_active", True) and has_role(user, "sales")
+    return {"owner_email": owner_email, "owner_name": name,
+            "sales_person_email": owner_email if sales else "", "sales_person_name": name if sales else ""}
+
+
+async def _customer_link(client: Dict[str, Any], admin: dict) -> Dict[str, Any]:
+    """The saved customer (and the lead it came from) the invoice traces back to, if this person may use it."""
+    cid = str(client.get("id") or "").strip()
+    saved = await get_collection("billing_clients").find_one({"$or": [{"id": cid}, {"_id": cid}]}) if cid else None
+    if not saved or not (await _sees_all(admin) or str(saved.get("owner_email") or "").lower() == _me(admin)):
+        return {"customer_id": None, "lead_id": None}
+    return {"customer_id": saved.get("id") or str(saved["_id"]), "lead_id": saved.get("lead_id")}
 
 @router.get("/invoices/next-number")
 async def get_next_invoice_number(
@@ -557,6 +598,7 @@ async def list_invoices(
             {"client.gstin": {"$regex": pattern, "$options": "i"}},
         ]
 
+    query = await _scoped(query, admin)
     # Count and page in the database (loading 1000 rows capped totals and dropped older invoices).
     total = await coll.count_documents(query)
     skip = (page - 1) * limit
@@ -572,6 +614,23 @@ async def list_invoices(
 
 @router.post("/invoices", status_code=status.HTTP_201_CREATED)
 async def create_invoice(payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
+    """Made out for the signed-in user, or for the requester when a billing manager issues it for a request."""
+    request = None
+    if payload.get("request_id"):
+        if not await _can_manage_billing(admin):
+            raise HTTPException(status_code=403, detail="Only billing managers can issue an invoice for a request.")
+        request = await _load_request(str(payload["request_id"]), admin)
+        if request.get("status") != "pending":
+            raise HTTPException(status_code=409, detail="That request has already been processed.")
+    doc = await _new_invoice(payload, admin, (request or {}).get("requested_by") or _who(admin))
+    if request:  # issuing the invoice is what approves the request
+        await get_collection("billing_requests").update_one({"_id": request["_id"]}, {"$set": {
+            "status": "approved", "reviewed_by": _who(admin), "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "invoice_id": doc["id"], "invoice_number": doc["invoice_number"]}})
+    return {"success": True, "invoice": doc}
+
+
+async def _new_invoice(payload: Dict[str, Any], admin: dict, owner_email: str) -> Dict[str, Any]:
     coll = get_collection("billing_invoices")
     branch_key = payload.get("branch_key") or "ahmedabad_y"
     invoice_type = payload.get("invoice_type") or "invoice"
@@ -580,7 +639,10 @@ async def create_invoice(payload: Dict[str, Any], admin: dict = Depends(get_curr
     if invoice_type not in ("invoice", "proforma"):
         raise HTTPException(status_code=422, detail="Invoice type must be 'invoice' or 'proforma'.")
     await _require_tax_invoice_access(admin, invoice_type)
-    sales_person = await _resolve_sales_person(payload.get("sales_person_email"), admin)
+    owner = await _owner_fields(owner_email)
+    claimed = str(payload.get("sales_person_email") or "").strip().lower()
+    if claimed and claimed != owner["sales_person_email"]:
+        raise HTTPException(status_code=403, detail="An invoice belongs to the person who creates it; it can't be made out in someone else's name.")
     client = validate_client(payload.get("client"))
     items = validate_items(payload.get("items"))
     today = date.today().isoformat()
@@ -644,29 +706,27 @@ async def create_invoice(payload: Dict[str, Any], admin: dict = Depends(get_curr
         "amount_in_words": calc["amount_in_words"],
         "status": inv_status,
         "notes": payload.get("notes", ""),
-        **sales_person,
+        **owner,
         "created_by": admin.get("email") or admin.get("username", "admin"),
+        "created_by_user_id": str(admin.get("_id") or admin.get("id") or ""),
+        "created_by_name": admin.get("username") or admin.get("email", ""),
+        "request_id": payload.get("request_id") or None,
+        **await _customer_link(client, admin),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    
+
     await coll.insert_one(doc)
-    return {"success": True, "invoice": doc}
+    return doc
 
 @router.get("/invoices/{invoice_id}")
 async def get_invoice(invoice_id: str, admin: dict = Depends(get_current_admin)):
-    coll = get_collection("billing_invoices")
-    inv = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}, {"invoice_number": invoice_id}]})
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return {"success": True, "invoice": inv}
+    return {"success": True, "invoice": await _invoice_for(invoice_id, admin)}
 
 @router.put("/invoices/{invoice_id}")
 async def update_invoice(invoice_id: str, payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
     coll = get_collection("billing_invoices")
-    inv = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]})
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    inv = await _invoice_for(invoice_id, admin)
     await _require_tax_invoice_access(admin, inv.get("invoice_type", "invoice"))
 
     client = validate_client(payload.get("client", inv.get("client", {})))
@@ -714,8 +774,6 @@ async def update_invoice(invoice_id: str, payload: Dict[str, Any], admin: dict =
         "notes": payload.get("notes", inv.get("notes", "")),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    if "sales_person_email" in payload and await _can_manage_billing(admin):  # who earns the incentive: managers only
-        update_data.update(await _resolve_sales_person(payload["sales_person_email"], {}))
     await coll.update_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]}, {"$set": update_data})
     updated = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}]})
     return {"success": True, "invoice": updated}
@@ -737,10 +795,7 @@ async def get_invoice_pdf_endpoint(
     download: bool = Query(False),
     admin: dict = Depends(get_current_admin)
 ):
-    coll = get_collection("billing_invoices")
-    inv = await coll.find_one({"$or": [{"id": invoice_id}, {"_id": invoice_id}, {"invoice_number": invoice_id}]})
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    inv = await _invoice_for(invoice_id, admin)
     pdf_bytes = generate_invoice_pdf(inv)
     inv_num = re.sub(r"[^A-Za-z0-9_]", "_", str(inv.get("invoice_number") or "invoice"))
     disposition = "attachment" if download else "inline"
@@ -763,7 +818,7 @@ async def list_quotations(
     admin: dict = Depends(get_current_admin)
 ):
     coll = get_collection("billing_quotations")
-    query = {}
+    query: Dict[str, Any] = {}
     if status and status != "all":
         query["status"] = status
     if search and search.strip():
@@ -773,6 +828,8 @@ async def list_quotations(
             {"client.name": {"$regex": pattern, "$options": "i"}},
             {"client.company_name": {"$regex": pattern, "$options": "i"}},
         ]
+    if not await _sees_all(admin):
+        query = {"$and": [query, {"created_by": _who(admin)}]}
     total = await coll.count_documents(query)
     skip = (page - 1) * limit
     items = await coll.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
@@ -834,20 +891,22 @@ async def create_quotation(payload: Dict[str, Any], admin: dict = Depends(get_cu
     await coll.insert_one(doc)
     return {"success": True, "quotation": doc}
 
-@router.get("/quotations/{quotation_id}")
-async def get_quotation(quotation_id: str, admin: dict = Depends(get_current_admin)):
-    coll = get_collection("billing_quotations")
-    qt = await coll.find_one({"$or": [{"id": quotation_id}, {"_id": quotation_id}]})
+async def _quotation_for(quotation_id: str, admin: dict) -> Dict[str, Any]:
+    qt = await get_collection("billing_quotations").find_one({"$or": [{"id": quotation_id}, {"_id": quotation_id}]})
     if not qt:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    return {"success": True, "quotation": qt}
+    if not await _sees_all(admin) and qt.get("created_by") != _who(admin):
+        raise HTTPException(status_code=403, detail="You can only open your own quotations.")
+    return qt
+
+@router.get("/quotations/{quotation_id}")
+async def get_quotation(quotation_id: str, admin: dict = Depends(get_current_admin)):
+    return {"success": True, "quotation": await _quotation_for(quotation_id, admin)}
 
 @router.put("/quotations/{quotation_id}")
 async def update_quotation(quotation_id: str, payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
     coll = get_collection("billing_quotations")
-    qt = await coll.find_one({"$or": [{"id": quotation_id}, {"_id": quotation_id}]})
-    if not qt:
-        raise HTTPException(status_code=404, detail="Quotation not found")
+    qt = await _quotation_for(quotation_id, admin)
     if qt.get("status") == "converted":
         raise HTTPException(status_code=409, detail=f"This quotation was already converted to invoice {qt.get('converted_invoice')}.")
     client = validate_client(payload.get("client", qt.get("client", {})))
@@ -884,10 +943,7 @@ async def delete_quotation(quotation_id: str, admin: dict = Depends(get_current_
 
 @router.get("/quotations/{quotation_id}/pdf")
 async def get_quotation_pdf_endpoint(quotation_id: str, download: bool = Query(False), admin: dict = Depends(get_current_admin)):
-    coll = get_collection("billing_quotations")
-    qt = await coll.find_one({"$or": [{"id": quotation_id}, {"_id": quotation_id}]})
-    if not qt:
-        raise HTTPException(status_code=404, detail="Quotation not found")
+    qt = await _quotation_for(quotation_id, admin)
     inv_data = {**qt, "invoice_number": qt.get("quotation_number"), "invoice_type": "proforma", "invoice_date": qt.get("quotation_date"), "due_date": qt.get("valid_until")}
     pdf_bytes = generate_invoice_pdf(inv_data)
     disposition = "attachment" if download else "inline"
@@ -897,9 +953,7 @@ async def get_quotation_pdf_endpoint(quotation_id: str, download: bool = Query(F
 @router.post("/quotations/{quotation_id}/convert")
 async def convert_quotation_to_invoice(quotation_id: str, admin: dict = Depends(get_current_admin)):
     coll_q = get_collection("billing_quotations")
-    qt = await coll_q.find_one({"$or": [{"id": quotation_id}, {"_id": quotation_id}]})
-    if not qt:
-        raise HTTPException(status_code=404, detail="Quotation not found")
+    qt = await _quotation_for(quotation_id, admin)
     if qt.get("status") == "converted":
         # Converting twice used to create a duplicate invoice.
         raise HTTPException(status_code=409, detail=f"This quotation was already converted to invoice {qt.get('converted_invoice')}.")
@@ -916,10 +970,10 @@ async def convert_quotation_to_invoice(quotation_id: str, admin: dict = Depends(
         "due_date": (date.today() + timedelta(days=15)).isoformat(),  # the invoice terms give 15 days
         "notes": f"Converted from Quotation {qt.get('quotation_number')}. {qt.get('notes', '')}".strip(),
     }
-    result = await create_invoice(inv_payload, admin=admin)
-    inv_num = result["invoice"]["invoice_number"]
+    invoice = await _new_invoice(inv_payload, admin, qt.get("created_by") or _who(admin))  # stays with whoever quoted
+    inv_num = invoice["invoice_number"]
     await coll_q.update_one({"_id": qt["_id"]}, {"$set": {"status": "converted", "converted_invoice": inv_num}})
-    return {"success": True, "invoice": result.get("invoice"), "message": f"Quotation converted to Tax Invoice {inv_num}"}
+    return {"success": True, "invoice": invoice, "message": f"Quotation converted to Tax Invoice {inv_num}"}
 
 # ---------------------------------------------------------------------------
 # Clients & Products Endpoints
@@ -934,6 +988,8 @@ async def list_clients(search: Optional[str] = Query(None), admin: dict = Depend
         query["$or"] = [{"name": {"$regex": pattern, "$options": "i"}},
                         {"company_name": {"$regex": pattern, "$options": "i"}},
                         {"gstin": {"$regex": pattern, "$options": "i"}}]
+    if not await _sees_all(admin):
+        query["owner_email"] = _me(admin)
     clients = await coll.find(query).sort("name", 1).to_list(5000)
     # Starter clients only for a brand-new, empty directory (a search with no hits used to re-add them every time).
     if not clients and not query and await coll.count_documents({}) == 0:
@@ -951,6 +1007,13 @@ async def list_clients(search: Optional[str] = Query(None), admin: dict = Depend
 _CLIENT_FIELDS = ("name", "company_name", "email", "phone", "address", "gstin", "state", "state_code", "contact_person")
 
 
+def _phone(value: Any, label: str = "Phone number") -> str:
+    try:
+        return optional_phone(value, label)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 def _clean_client(payload: Dict[str, Any], existing: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     merged = {**(existing or {}), **{k: v for k, v in payload.items() if k in _CLIENT_FIELDS}}
     merged["name"] = str(merged.get("name") or merged.get("company_name") or "").strip()
@@ -961,6 +1024,7 @@ def _clean_client(payload: Dict[str, Any], existing: Optional[Dict[str, Any]] = 
     if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
         raise HTTPException(status_code=422, detail="Enter a valid email address.")
     validate_client(merged)
+    merged["phone"] = _phone(merged.get("phone"))
     gstin = str(merged.get("gstin") or "").strip().upper()
     merged["gstin"] = gstin
     if gstin:
@@ -983,12 +1047,51 @@ async def create_client(payload: Dict[str, Any], admin: dict = Depends(get_curre
     await coll.insert_one(doc)
     return {"success": True, "client": doc}
 
+@router.post("/clients/from-lead/{lead_id}", status_code=status.HTTP_201_CREATED)
+async def create_client_from_lead(lead_id: str, payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
+    """Converts a lead into a customer, starting from the lead's own details (the form may correct them).
+    A sales person can convert only leads assigned to them (or ones they created that nobody else has)."""
+    leads = get_collection("sales_leads")
+    lead = await leads.find_one({"_id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
+    assigned = lead.get("assigned_to") or {}
+    me_id = str(admin.get("_id") or admin.get("id") or "")
+    manager = "sales.hub.manage" in await get_user_permissions(admin) or await _sees_all(admin)
+    own = assigned.get("user_id") == me_id or (not assigned and str(lead.get("created_by") or "").lower() == _me(admin))
+    if not (manager or own):
+        raise HTTPException(status_code=403, detail="You can only convert your own leads.")
+    if lead.get("customer_id"):
+        raise HTTPException(status_code=409, detail="This lead is already a customer.")
+    from_lead = {"name": lead.get("company") or lead.get("name"), "company_name": lead.get("company") or lead.get("name"),
+                 "contact_person": lead.get("name"), "phone": lead.get("phone"), "email": lead.get("email"),
+                 "address": lead.get("address") or lead.get("city"), "gstin": lead.get("gstin"),
+                 "state": lead.get("state") or "Gujarat"}
+    # Place of supply: a GSTIN sets the state code itself; otherwise only Gujarat is known to be 24.
+    from_lead["state_code"] = "24" if str(from_lead["state"]).strip().lower() == "gujarat" else ""
+    fields = _clean_client({**{k: v for k, v in from_lead.items() if v}, **{k: v for k, v in payload.items() if v not in (None, "")}})
+    coll = get_collection("billing_clients")
+    for key, label in (("gstin", "GSTIN"), ("email", "email"), ("phone", "phone number")):
+        if fields.get(key) and await coll.find_one({key: fields[key]}):
+            raise HTTPException(status_code=409, detail=f"A customer with this {label} already exists.")
+    owner = str(assigned.get("email") or lead.get("created_by") or _who(admin)).strip().lower()
+    cid = str(uuid.uuid4())
+    doc = {"id": cid, "_id": cid, **fields, "outstanding_balance": 0.0, "lead_id": lead_id, "owner_email": owner,
+           "owner_name": assigned.get("name") or owner, "created_by": _who(admin),
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await coll.insert_one(doc)
+    await leads.update_one({"_id": lead_id}, {"$set": {"status": "CONVERTED", "customer_id": cid,
+                                                       "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"success": True, "client": doc}
+
 @router.get("/clients/{client_id}")
 async def get_client(client_id: str, admin: dict = Depends(get_current_admin)):
     coll = get_collection("billing_clients")
     cl = await coll.find_one({"$or": [{"id": client_id}, {"_id": client_id}]})
     if not cl:
         raise HTTPException(status_code=404, detail="Client not found")
+    if not await _sees_all(admin) and str(cl.get("owner_email") or "").lower() != _me(admin):
+        raise HTTPException(status_code=403, detail="You can only open your own customers.")
     return {"success": True, "client": cl}
 
 @router.put("/clients/{client_id}")
@@ -1090,8 +1193,39 @@ async def delete_product(product_id: str, admin: dict = Depends(get_current_admi
 @router.get("/payments")
 async def list_payments(admin: dict = Depends(get_current_admin)):
     coll = get_collection("billing_payments")
-    payments = await coll.find().sort("payment_date", -1).to_list(500)
+    query: Dict[str, Any] = {}
+    if not await _sees_all(admin):
+        mine = await get_collection("billing_invoices").find(await _scoped({}, admin)).to_list(20000)
+        query = {"invoice_id": {"$in": [i["id"] for i in mine if i.get("id")]}}
+    payments = await coll.find(query).sort("payment_date", -1).to_list(500)
     return {"success": True, "items": payments}
+
+
+@router.get("/deals")
+async def list_deals(admin: dict = Depends(get_current_admin)):
+    """Each invoice is a deal. What was collected is summed from the payment records, not taken from a status,
+    so a deal is fully collected only when the recorded payments reach its value."""
+    invoices = [i for i in await get_collection("billing_invoices").find(await _scoped({}, admin)).sort("created_at", -1).to_list(20000)
+                if i.get("status") != "cancelled" and i.get("id")]
+    paid: Dict[str, float] = {}
+    counts: Dict[str, int] = {}
+    ids = [i["id"] for i in invoices]
+    for p in await get_collection("billing_payments").find({"invoice_id": {"$in": ids}}).to_list(200000) if ids else []:
+        paid[p["invoice_id"]] = paid.get(p["invoice_id"], 0.0) + float(p.get("amount") or 0)
+        counts[p["invoice_id"]] = counts.get(p["invoice_id"], 0) + 1
+    rows = []
+    for i in invoices:
+        value, got = round(float(i.get("grand_total") or 0), 2), round(paid.get(i["id"], 0.0), 2)
+        state = "fully_collected" if value > 0 and got >= value - 0.005 else "partly_collected" if got > 0 else "not_collected"
+        rows.append({"id": i["id"], "invoice_number": i.get("invoice_number"), "invoice_type": i.get("invoice_type"),
+                     "invoice_date": i.get("invoice_date"), "client_name": (i.get("client") or {}).get("name", ""),
+                     "customer_id": i.get("customer_id"), "lead_id": i.get("lead_id"),
+                     "owner_name": i.get("owner_name") or i.get("sales_person_name") or i.get("created_by", ""),
+                     "value": value, "collected": got, "balance": round(max(value - got, 0.0), 2),
+                     "payments": counts.get(i["id"], 0), "collection_status": state})
+    summary = {s: sum(1 for r in rows if r["collection_status"] == s) for s in ("fully_collected", "partly_collected", "not_collected")}
+    summary.update(value=round(sum(r["value"] for r in rows), 2), collected=round(sum(r["collected"] for r in rows), 2))
+    return {"success": True, "items": rows, "summary": summary}
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
 async def record_payment(payload: Dict[str, Any], admin: dict = Depends(get_current_admin)):
@@ -1163,9 +1297,10 @@ async def get_billing_dashboard_metrics(admin: dict = Depends(get_current_admin)
     coll_q = get_collection("billing_quotations")
     coll_c = get_collection("billing_clients")
     
-    all_invoices = await coll_i.find().to_list(50000)
-    quotations_count = await coll_q.count_documents({})
-    clients_count = await coll_c.count_documents({})
+    everything = await _sees_all(admin)
+    all_invoices = await coll_i.find(await _scoped({}, admin)).to_list(50000)
+    quotations_count = await coll_q.count_documents({} if everything else {"created_by": _who(admin)})
+    clients_count = await coll_c.count_documents({} if everything else {"owner_email": _me(admin)})
     # Revenue = tax invoices only: proformas are not invoices and cancelled ones don't count.
     invoices = [i for i in all_invoices if i.get("invoice_type", "invoice") == "invoice" and i.get("status") != "cancelled"]
 
@@ -1293,7 +1428,7 @@ def _clean_request(payload: Dict[str, Any]) -> Dict[str, Any]:
         items.append({"particulars": particulars[:500], "quantity": qty, "rate": rate})
     return {
         "billing_name": name[:255], "billing_address": address[:1000],
-        "billing_phone": str(payload.get("billing_phone") or "").strip()[:60],
+        "billing_phone": _phone(payload.get("billing_phone"), "Phone"),
         "client_gstin": gstin, "client_state": str(payload.get("client_state") or "").strip()[:100],
         "branch_key": branch_key, "remark": str(payload.get("remark") or "").strip()[:1000],
         "items": items, "estimated_total": round(sum(i["quantity"] * i["rate"] for i in items), 2),
@@ -1431,7 +1566,7 @@ async def delete_payment(payment_id: str, admin: dict = Depends(get_current_admi
 
 @router.get("/export/invoices.csv")
 async def export_invoices_csv(admin: dict = Depends(get_current_admin)):
-    invs = await get_collection("billing_invoices").find({}).sort("invoice_date", -1).to_list(50000)
+    invs = await get_collection("billing_invoices").find(await _scoped({}, admin)).sort("invoice_date", -1).to_list(50000)
     rows = [[i.get("invoice_number"), i.get("invoice_type"), i.get("invoice_date"), i.get("due_date"), i.get("branch_key"),
              (i.get("client") or {}).get("name"), (i.get("client") or {}).get("gstin"), i.get("taxable_amount"),
              i.get("cgst_amount"), i.get("sgst_amount"), i.get("igst_amount"), i.get("grand_total"),

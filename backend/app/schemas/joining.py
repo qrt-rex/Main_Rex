@@ -1,7 +1,7 @@
 from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from app.utils.sanitize import clean_payload
-from app.utils.validators import require_iso_date
+from app.utils.validators import optional_phone, require_iso_date, require_mobile
 
 class GenerateTokenRequest(BaseModel):
     candidate_id: Optional[str] = None
@@ -118,6 +118,21 @@ class OnboardingSubmitRequest(BaseModel):
         if not v or not str(v).strip():
             raise ValueError("This field is required.")
         return str(v).strip()
+
+    @field_validator("mobile_number")
+    @classmethod
+    def _mobile(cls, v):
+        return require_mobile(v)
+
+    @field_validator("alternate_mobile")
+    @classmethod
+    def _alternate(cls, v):
+        return optional_phone(v, "Alternate number")
+
+    @field_validator("emergency_contact_number")
+    @classmethod
+    def _emergency(cls, v):
+        return optional_phone(v, "Emergency contact number")
 
 class OnboardingSubmissionResponse(BaseModel):
     success: bool

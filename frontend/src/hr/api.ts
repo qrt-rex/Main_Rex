@@ -1,7 +1,6 @@
 // Typed access to the integrated Rexera-HR endpoints. Every call goes through lib/api
 // (bearer token, 401 handling); the backend enforces the matching RBAC permission.
 import { api } from '../lib/api';
-import type { IncentiveDetail } from '../sales/performance';
 
 export const DEPARTMENTS = ['SALES', 'ADMIN', 'HR/ADMIN'];
 export const BRANCHES = ['AMD', 'BRD'];
@@ -367,11 +366,10 @@ export const deleteSlip = (id: string) => api.delete(`/api/payroll/slip/${id}`);
 export const calculateSalary = (body: Record<string, unknown>) => api.post<SalaryCalc>('/api/payroll/calculate-salary', body);
 export const generateSlip = (body: Record<string, unknown>) => api.post<SalarySlip>('/api/payroll/generate-slip', body);
 
-/** Sales staff: attendance from Start/End Day and the collection incentive payroll will use. */
+/** Sales staff: attendance from Start/End Day (the sales incentive is reported separately, not in payroll). */
 export interface SalesPayrollPreview {
   is_sales: boolean;
   attendance: { working_days: number; full_days: number; half_days: number; absent_days: number; paid_leave_days: number; unpaid_leave_days: number; late_count: number; missed_end_day: number; before_joining_days: number; after_exit_days: number } | null;
-  incentive: IncentiveDetail | null;
 }
 export const salesPayrollPreview = (employee_id: string, month: string, year: number) =>
   api.get<SalesPayrollPreview>('/api/payroll/sales-preview', { employee_id, month, year });

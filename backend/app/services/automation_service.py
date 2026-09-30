@@ -175,51 +175,21 @@ async def payroll_approval_reminder(ctx: Ctx) -> str:
 
 async def sales_incentive_month_end(ctx: Ctx) -> str:
     """
-    On the 1st: every sales person's final incentive for the month just ended, kept as a record
-    (sales_incentive_snapshots). Payroll that was calculated before the month ended (the monthly run
-    is on the 28th) and so carries a different incentive is listed for HR to recalculate; payroll
-    itself is never changed here, so HR's edits and finalized payslips stay as they are.
+    On the 1st: records every sales person's final incentive for the month just ended (the same as HR's
+    "Calculate & record") and emails HR the totals. The incentive is paid separately, not through payroll.
     """
     from app.services import sales_payroll as sp
 
     last = ctx.today.replace(day=1) - timedelta(days=1)
     month, year = MONTHS[last.month - 1], last.year
-    cfg = await sp.get_config()
-    got = await sp.collections(*sp.month_range(year, last.month))
-    payrolls = {str(p.get("employee_id")): p for p in
-                await get_collection("payrolls").find({"month": month, "year": year}).to_list(10000)}
-    col = get_collection("sales_incentive_snapshots")
-    rows, stale, total = [], [], 0.0
-    for p in await sp.sales_people():
-        inc = sp.compute_incentive(got.get(p["email"], []), p["salary"], cfg)
-        snap_id = f"{year}-{last.month:02d}-{p['email']}"
-        doc = {"employee_id": p["employee_id"], "employee_code": p["employee_code"], "employee_name": p["name"],
-               "email": p["email"], "month": month, "year": year, "salary": inc["monthly_salary"],
-               "gross_collection": inc["gross_collection"], "dsc_deduction": inc["dsc_deduction"],
-               "net_collection": inc["net_collection"], "eligibility_target": inc["gate_amount"],
-               "monthly_target": inc["target_amount"], "daily_incentive": inc["daily_incentive"],
-               "weekly_incentive": inc["weekly_incentive"], "monthly_incentive": inc["monthly_incentive"],
-               "total_incentive": inc["incentive"], "eligibility_status": inc["eligibility"]["status"],
-               "calculation_date": datetime.utcnow().isoformat(), "config_version": inc["config_version"], "details": inc}
-        if await col.find_one({"_id": snap_id}):
-            await col.update_one({"_id": snap_id}, {"$set": doc})
-        else:
-            await col.insert_one({"_id": snap_id, **doc})
-        total += inc["incentive"]
-        rows.append([p["name"], _money(inc["net_collection"]), inc["eligibility"]["status"], _money(inc["incentive"])])
-        rec = payrolls.get(p["employee_id"])
-        booked = float((rec.get("earnings") or {}).get("incentive", 0.0)) if rec else None
-        if rec and abs(booked - inc["incentive"]) > 0.005:
-            stale.append([p["name"], rec.get("status", ""), _money(booked), _money(inc["incentive"])])
-    if not rows:
+    done = await sp.record_month(year, last.month, "automation")
+    if not done:
         return "No sales accounts."
-    msg = f"{month} {year}: {len(rows)} sales person(s), total incentive {_money(total)}"
-    msg += f"; {len(stale)} payroll record(s) carry a different incentive." if stale else "."
-    body = f"<p>{_e(msg)}</p>" + table_html(["Employee", "Net collection", "Eligibility", "Incentive"], rows)
-    if stale:
-        body += ("<p>These payrolls were calculated before the month ended. Recalculate them in HR &gt; Sales incentives "
-                 "(a finalized one must be unlocked first):</p>"
-                 + table_html(["Employee", "Payroll status", "Incentive on payroll", "Final incentive"], stale))
+    total = sum(d["total_incentive"] for d in done)
+    msg = f"{month} {year}: {len(done)} sales person(s), total incentive {_money(total)}."
+    rows = [[d["employee_name"], _money(d["net_collection"]), d["eligibility_status"], _money(d["total_incentive"])] for d in done]
+    body = (f"<p>{_e(msg)} The incentive is paid separately from salary; download the report from "
+            "HR &gt; Sales incentives.</p>" + table_html(["Employee", "Net collection", "Eligibility", "Incentive"], rows))
     await send(ctx.hr_email, f"Sales incentives for {month} {year}", "Sales incentives: month end", body)
     return msg
 
@@ -449,7 +419,7 @@ AUTOMATIONS: List[Dict[str, Any]] = [
      "description": "Emails HR a list of payroll records that are calculated but not yet finalized.",
      "schedule": {"type": "daily", "time": "10:00"}, "handler": payroll_approval_reminder},
     {"id": "sales_incentive_month_end", "category": "Payroll", "label": "Sales incentive month-end",
-     "description": "On the 1st, works out every sales person's final incentive for the month just ended, keeps a record of it, and emails HR the totals and any payroll calculated earlier with a different incentive, to recalculate in HR > Sales incentives.",
+     "description": "On the 1st, works out and records every sales person's final incentive for the month just ended and emails HR the totals. The incentive is paid separately from salary; the report is in HR > Sales incentives.",
      "schedule": {"type": "monthly", "day": 1, "time": "07:00"}, "handler": sales_incentive_month_end},
     {"id": "invoice_reminders", "category": "Billing", "label": "Invoice payment reminders",
      "description": "Emails clients before an invoice is due, on the due date and at set days after it (one email per step). Only tax invoices with a client email.",

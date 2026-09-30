@@ -16,6 +16,7 @@ export interface Incentive {
   target_amount: number;
   target_achievement: number;
   note: string;
+  monthly_salary: number;
 }
 export interface IncentiveDetail extends Incentive {
   monthly_salary: number;
@@ -38,11 +39,11 @@ export interface ScoreRow extends Totals {
   achievement: number | null;
   /** The month's incentive; null for other people when you can't see salaries. */
   incentive: Incentive | null;
-  /** HR only: where this person's payroll for the month stands. */
-  payroll?: { id: string; status: string; locked: boolean; incentive: number } | null;
+  /** HR only: what was last recorded for the month (the incentive report paid separately from salary). */
+  recorded?: { total: number; at: string; by: string; recalculations: number } | null;
 }
 export interface Scorecard {
-  period: Period; from: string; to: string; month: string; rows: ScoreRow[]; departments: string[]; can_export: boolean;
+  period: Period; from: string; to: string; month: string; rows: ScoreRow[]; departments: string[]; can_export: boolean; can_record?: boolean;
 }
 export interface MyPerformance {
   is_sales: boolean;
@@ -76,7 +77,9 @@ export const getMyPerformance = (date?: string) => api.get<MyPerformance>('/api/
 export const getIncentiveConfig = () => api.get<IncentiveConfig>('/api/sales-performance/config');
 export const saveIncentiveRules = (rules: IncentiveRules) => api.put<IncentiveConfig>('/api/sales-performance/config', rules);
 export const saveDscAmount = (dsc_amount: number) => api.put<IncentiveConfig>('/api/sales-performance/config/dsc', { dsc_amount });
-export async function downloadScorecard(period: Period, date: string, department: string, format: 'xlsx' | 'pdf') {
+export async function downloadScorecard(period: Period, date: string, department: string, format: 'xlsx' | 'pdf' | 'csv') {
   const blob = await api.blob('/api/sales-performance/export', { period, date, department, format });
-  saveBlob(blob, `sales-scorecard-${period}-${date}.${format}`);
+  saveBlob(blob, `sales-${period === 'month' ? 'incentives' : 'scorecard'}-${date}.${format}`);
 }
+export const recordIncentives = (date: string) =>
+  api.post<{ month: string; recorded: number; total: number }>(`/api/sales-performance/incentives/record?date=${encodeURIComponent(date)}`);

@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Award, Download, RefreshCw, Trophy } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
-import { api, ApiError } from '../lib/api';
+import { Award, Calculator, Download, Trophy } from 'lucide-react';
+import { ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
-import { MONTHS, money, todayISO } from '../lib/format';
+import { date, MONTHS, money, todayISO } from '../lib/format';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
@@ -16,7 +15,7 @@ import { Tabs } from '../components/common/Tabs';
 import { useToast } from '../components/common/ToastContext';
 import { PageHeader } from '../components/layout/PageHeader';
 import { MyPerformanceCard } from './MyPerformance';
-import { downloadScorecard, getScorecard, type Incentive, type Period, type ScoreRow } from './performance';
+import { downloadScorecard, getScorecard, recordIncentives, type Incentive, type Period, type ScoreRow } from './performance';
 
 const PERIODS: { id: Period; label: string }[] = [{ id: 'day', label: 'Daily' }, { id: 'week', label: 'Weekly' }, { id: 'month', label: 'Monthly' }];
 
@@ -29,9 +28,9 @@ function Eligibility({ inc }: { inc: Incentive }) {
   );
 }
 
-/** Leaderboard for everyone (hrView adds each person's incentive breakdown, payroll status and recalculation). */
+/** Leaderboard for everyone. hrView is the monthly incentive report: each person's breakdown, recording
+ * (and recalculating) the month, and the CSV / Excel / PDF download. The incentive is paid separately from salary. */
 export function SalesScorecard({ hrView = false }: { hrView?: boolean }) {
-  const { can } = useAuth();
   const { showToast } = useToast();
   const confirm = useConfirm();
   const [period, setPeriod] = useState<Period>('month');
@@ -41,7 +40,7 @@ export function SalesScorecard({ hrView = false }: { hrView?: boolean }) {
   const board = useApi(() => getScorecard(period, day, department), [period, day, department]);
   const data = board.data;
 
-  const exportAs = async (format: 'xlsx' | 'pdf') => {
+  const exportAs = async (format: 'xlsx' | 'pdf' | 'csv') => {
     setBusy(format);
     try {
       await downloadScorecard(period, day, department, format);
@@ -52,18 +51,18 @@ export function SalesScorecard({ hrView = false }: { hrView?: boolean }) {
     }
   };
 
-  const recalculate = async (r: ScoreRow) => {
-    const [y, m] = day.split('-').map(Number);
-    const month = MONTHS[m - 1];
-    if (!(await confirm({ title: `Recalculate ${r.name}'s ${month} payroll?`, confirmText: 'Recalculate',
-      message: 'Payroll is worked out again from the current collections and incentive rules. Manual edits to this payroll record are replaced. The previous and new incentive are kept in its history.' }))) return;
-    setBusy(r.email);
+  const recorded = (data?.rows ?? []).some((r) => r.recorded);
+  const record = async () => {
+    const month = MONTHS[Number(day.split('-')[1]) - 1];
+    if (recorded && !(await confirm({ title: `Recalculate ${month}'s incentives?`, confirmText: 'Recalculate',
+      message: 'Every sales person\'s incentive is worked out again from the current collections and rules. The totals before and after are kept in each record\'s history.' }))) return;
+    setBusy('record');
     try {
-      await api.post('/api/payroll/calculate', { employee_id: r.employee_id, month, year: y });
-      showToast(`${r.name}'s payroll recalculated`, 'success');
+      const res = await recordIncentives(day);
+      showToast(`${res.month}: incentives recorded for ${res.recorded} sales person(s), ${money(res.total)} in all`, 'success');
       board.reload();
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Could not recalculate', 'error');
+      showToast(err instanceof ApiError ? err.message : 'Could not record the incentives', 'error');
     } finally {
       setBusy('');
     }
@@ -91,19 +90,13 @@ export function SalesScorecard({ hrView = false }: { hrView?: boolean }) {
       { key: 'monthly', header: 'Monthly', align: 'right', render: (r) => <span>{money(r.incentive?.monthly_incentive)}{r.incentive?.slab_percent != null && <span className="block text-[11px] text-text-muted">{r.incentive.slab_percent}% slab</span>}</span> },
       { key: 'total', header: 'Total incentive', align: 'right', render: (r) => <span className="font-semibold text-success">{money(r.incentive?.incentive)}</span>, sortValue: (r) => r.incentive?.incentive ?? 0 },
       {
-        key: 'payroll', header: 'Payroll', align: 'right', render: (r) => {
-          if (!r.employee_id) return <span className="text-xs text-text-muted">No employee record</span>;
-          const differs = r.payroll && r.incentive && Math.abs(r.payroll.incentive - r.incentive.incentive) > 0.005;
+        key: 'recorded', header: 'Recorded', align: 'right', render: (r) => {
+          if (!r.recorded) return <span className="text-xs text-text-muted">Not recorded</span>;
+          const differs = r.incentive && Math.abs(r.recorded.total - r.incentive.incentive) > 0.005;
           return (
-            <span className="inline-flex flex-col items-end gap-1">
-              {r.payroll ? <span className="text-xs text-text-secondary">{r.payroll.status} · {money(r.payroll.incentive)}</span> : <span className="text-xs text-text-muted">Not calculated</span>}
-              {differs && <Badge tone="warning">Differs</Badge>}
-              {can('hr.payroll.process') && (
-                <Button size="sm" variant="secondary" disabled={r.payroll?.locked || busy === r.email} loading={busy === r.email}
-                  title={r.payroll?.locked ? 'Finalized: unlock it in HR > Payroll first' : undefined} onClick={() => recalculate(r)}>
-                  <RefreshCw size={13} /> {r.payroll ? 'Recalculate' : 'Calculate'}
-                </Button>
-              )}
+            <span className="inline-flex flex-col items-end gap-1" title={`By ${r.recorded.by}${r.recorded.recalculations ? `, recalculated ${r.recorded.recalculations} time(s)` : ''}`}>
+              <span className="text-xs text-text-secondary">{money(r.recorded.total)} · {date(r.recorded.at?.slice(0, 10))}</span>
+              {differs && <Badge tone="warning">Changed since</Badge>}
             </span>
           );
         },
@@ -116,12 +109,16 @@ export function SalesScorecard({ hrView = false }: { hrView?: boolean }) {
       <PageHeader
         title={hrView ? 'Sales incentives' : 'Sales scorecard'}
         description={hrView
-          ? 'Every sales person\'s collections and incentive, worked out from client payments after DSC. Payroll takes the same figures.'
+          ? 'Each sales person\'s incentive from their own client payments after DSC. It is paid separately: salary slips never include it. Record the month, then download the report.'
           : 'Collections after DSC, ranked. Targets and incentives come from the HR incentive rules.'}
-        actions={data?.can_export ? (
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" loading={busy === 'xlsx'} onClick={() => exportAs('xlsx')}><Download size={14} /> Excel</Button>
-            <Button variant="secondary" size="sm" loading={busy === 'pdf'} onClick={() => exportAs('pdf')}><Download size={14} /> PDF</Button>
+        actions={(data?.can_export || (hrView && data?.can_record)) ? (
+          <div className="flex flex-wrap gap-2">
+            {hrView && data?.can_record && period === 'month' && (
+              <Button size="sm" loading={busy === 'record'} onClick={record}><Calculator size={14} /> {recorded ? 'Recalculate & record' : 'Calculate & record'}</Button>
+            )}
+            {data?.can_export && (['csv', 'xlsx', 'pdf'] as const).map((f) => (
+              <Button key={f} variant="secondary" size="sm" loading={busy === f} onClick={() => exportAs(f)}><Download size={14} /> {f === 'xlsx' ? 'Excel' : f.toUpperCase()}</Button>
+            ))}
           </div>
         ) : undefined}
       />
