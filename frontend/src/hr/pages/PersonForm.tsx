@@ -484,7 +484,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
 
         <div className="space-y-4">
           {kind === 'employee' && (
-            <Card className="lg:sticky lg:top-20">
+            <Card className="lg:fixed lg:top-20 lg:right-8 lg:w-[380px]">
               <CardHeader title="Salary preview" description="Per month, before TDS and LOP" />
               <dl className="text-sm">
                 {([
