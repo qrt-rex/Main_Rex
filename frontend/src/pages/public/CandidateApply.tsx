@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { isPhoneOk, phoneDigits, phoneInput } from '../../lib/phone';
 import { CheckCircle2, Plus, X } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { Button } from '../../components/common/Button';
@@ -63,7 +64,7 @@ export function CandidateApply() {
     if (v.candidate_name.trim().length < 2) er.candidate_name = 'Enter your full name.';
     if (!v.position_applied.trim()) er.position_applied = 'Enter the position you are applying for.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) er.email = 'Enter a valid email address.';
-    if (v.contact_number.replace(/\D/g, '').length < 10) er.contact_number = 'Enter a 10-digit mobile number.';
+    if (!v.contact_number || !isPhoneOk(v.contact_number)) er.contact_number = 'Enter a 10-digit mobile number.';
     if (!education.some((r) => r.degree.trim())) er.education = 'Add at least your highest qualification.';
     if (!declared) er.declared = 'Please accept the declaration.';
     setErrors(er);
@@ -103,7 +104,7 @@ export function CandidateApply() {
           <Input label="Full name" required value={v.candidate_name} onChange={set('candidate_name')} error={errors.candidate_name} autoComplete="name" />
           <Input label="Position applied for" required value={v.position_applied} onChange={set('position_applied')} error={errors.position_applied} />
           <Input label="Email address" type="email" required value={v.email} onChange={set('email')} error={errors.email} autoComplete="email" />
-          <Input label="Mobile number" type="tel" required value={v.contact_number} onChange={set('contact_number')} error={errors.contact_number} autoComplete="tel" />
+          <Input label="Mobile number" {...phoneInput} required value={v.contact_number} onChange={(e) => setV((s) => ({ ...s, contact_number: phoneDigits(e.target.value) }))} error={errors.contact_number} autoComplete="tel" />
           <Input label="Interview date" type="date" value={v.interview_date} onChange={set('interview_date')} />
           <Input label="Current organisation" value={v.current_company} onChange={set('current_company')} />
           <Input label="Total work experience" placeholder="e.g. 3.5 years" value={v.total_experience} onChange={set('total_experience')} />

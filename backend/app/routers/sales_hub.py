@@ -24,7 +24,9 @@ from app.database import get_collection
 from app.schemas.attendance import PunchInRequest, PunchOutRequest
 from app.services.attendance_service import AttendanceService
 from app.services.auth_service import get_current_admin
+from app.routers.billing import GSTIN_RE
 from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role, sees_all_attendance
+from app.utils.validators import optional_phone
 
 router = APIRouter(prefix="/api/sales-hub", tags=["Sales Workspace"])
 logger = logging.getLogger("rexera.sales_hub")
@@ -257,6 +259,9 @@ class LeadIn(BaseModel):
     phone: str = Field(default="", max_length=30)
     email: str = Field(default="", max_length=200)
     city: str = Field(default="", max_length=80)
+    address: str = Field(default="", max_length=500)
+    state: str = Field(default="", max_length=80)
+    gstin: str = Field(default="", max_length=20)
     source: str = Field(default="", max_length=80)
     service_interest: str = Field(default="", max_length=200)
     notes: str = Field(default="", max_length=2000)
@@ -266,9 +271,17 @@ class LeadIn(BaseModel):
 
 
 def _clean_lead(req: LeadIn) -> Dict[str, Any]:
-    data = {k: (getattr(req, k) or "").strip() for k in ("name", "company", "phone", "email", "city", "source", "service_interest", "notes")}
+    data = {k: (getattr(req, k) or "").strip() for k in ("name", "company", "phone", "email", "city", "address", "state",
+                                                        "gstin", "source", "service_interest", "notes")}
     if not (data["name"] or data["company"] or data["phone"]):
         raise HTTPException(status_code=422, detail="Enter at least a name, company or phone number.")
+    try:
+        data["phone"] = optional_phone(data["phone"])
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    data["gstin"] = data["gstin"].upper()
+    if data["gstin"] and not GSTIN_RE.match(data["gstin"]):
+        raise HTTPException(status_code=422, detail=f"GSTIN {data['gstin']} is not valid (15 characters, e.g. 24ABCDE1234F1Z5).")
     if req.status is not None:
         if req.status not in LEAD_STATUSES:
             raise HTTPException(status_code=422, detail=f"Status must be one of {', '.join(LEAD_STATUSES)}.")
@@ -291,9 +304,22 @@ async def assignees():
     return {"users": sorted(out, key=lambda u: (u["role"] != "sales", u["name"].lower()))}
 
 
+def _is_my_lead(lead: Dict[str, Any], admin: Dict[str, Any]) -> bool:
+    """Assigned to me, or created by me and not given to anyone else."""
+    owner = lead.get("assigned_to") or {}
+    if owner:
+        return owner.get("user_id") == _me(admin)["user_id"]
+    return str(lead.get("created_by") or "").lower() == str(admin.get("email") or "").lower()
+
+
 @router.get("/leads")
-async def list_leads(search: Optional[str] = None, status_filter: Optional[str] = Query(None, alias="status"), assigned: Optional[str] = None):
+async def list_leads(search: Optional[str] = None, status_filter: Optional[str] = Query(None, alias="status"),
+                     assigned: Optional[str] = None, admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Managers see every lead; a sales person sees only their own (the Leads page)."""
     items = await get_collection("sales_leads").find({}).sort("created_at", -1).to_list(20000)
+    manager = await _can_manage(admin)
+    if not manager:
+        items = [l for l in items if _is_my_lead(l, admin)]
     if status_filter in LEAD_STATUSES:
         items = [l for l in items if l.get("status") == status_filter]
     if assigned == "unassigned":
@@ -303,7 +329,7 @@ async def list_leads(search: Optional[str] = None, status_filter: Optional[str] 
     if search and search.strip():
         s = search.strip().lower()
         items = [l for l in items if any(s in str(l.get(k, "")).lower() for k in ("name", "company", "phone", "email", "city", "service_interest"))]
-    return {"items": [_id(l) for l in items], "total": len(items), "statuses": LEAD_STATUSES}
+    return {"items": [_id(l) for l in items], "total": len(items), "statuses": LEAD_STATUSES, "can_manage": manager}
 
 
 @router.post("/leads", status_code=status.HTTP_201_CREATED)

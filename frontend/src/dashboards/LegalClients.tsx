@@ -33,7 +33,7 @@ export interface LegalClient {
 interface Staff { id: string; name: string; email: string; role_label: string }
 
 const STATUSES = ['PENDING', 'UNDER REVIEW', 'APPROVED', 'HOLD', 'REJECTED'];
-const inputCls = 'rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200';
+const inputCls = 'rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200';
 const card = 'rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden';
 const th = 'py-3.5 px-4';
 

@@ -199,9 +199,9 @@ export function LegalDashboard() {
     // The app header already shows the account and sign-out, so this page has no header bar of its own.
     <div className="text-slate-900 dark:text-slate-100 pb-16 font-sans">
       <div className="max-w-7xl mx-auto">
-       <div className="grid gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
         {/* Section sidebar */}
-        <nav aria-label="Legal sections" className="self-start lg:sticky lg:top-24">
+        <nav aria-label="Legal sections" className="min-w-0 self-start lg:sticky lg:top-24">
           <ul className="flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-col">
             {sections.map(({ id, label, icon: Icon }) => (
               <li key={id} className="shrink-0">
@@ -277,7 +277,7 @@ export function LegalDashboard() {
               <select
                 value={selectedBdm}
                 onChange={(e) => { setSelectedBdm(e.target.value); setCurrentPage(1); }}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
               >
                 <option value="All BDMs">All BDMs</option>
                 {bdmOptions.map((b) => (
@@ -294,7 +294,7 @@ export function LegalDashboard() {
               <select
                 value={selectedService}
                 onChange={(e) => { setSelectedService(e.target.value); setCurrentPage(1); }}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
               >
                 <option value="All Services">All Services</option>
                 {serviceOptions.map((s) => (
@@ -311,7 +311,7 @@ export function LegalDashboard() {
               <select
                 value={selectedStatus}
                 onChange={(e) => { setSelectedStatus(e.target.value); setCurrentPage(1); }}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
               >
                 <option value="All Status">All Status</option>
                 <option value="PENDING">Pending</option>
@@ -334,7 +334,7 @@ export function LegalDashboard() {
                   placeholder="Search by CRM ID, company name or BDM..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-3 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-3 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
                 />
               </div>
             </div>

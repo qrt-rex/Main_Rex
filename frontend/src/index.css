@@ -1,6 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* `dark:` utilities follow the app's theme switch, not only the OS: an explicit Dark theme, or System
+   while the OS is dark. (With Tailwind's default they followed the OS alone, so Legal and Billing screens
+   mixed light and dark colours whenever the two disagreed.) */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
+
 /* Design tokens. Components only ever use these (bg-surface, text-text-muted, ...).
    Light is the default; dark is applied by ThemeContext (data-theme) or the OS when
    the user picks "System". */
@@ -138,6 +152,12 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 14px;
+  }
+
+  /* A native dropdown's list takes its colours from here, so it always matches the theme. */
+  select option {
+    background-color: var(--color-surface);
+    color: var(--color-text);
   }
 
   :focus-visible {

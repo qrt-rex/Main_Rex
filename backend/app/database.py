@@ -36,6 +36,18 @@ KNOWN_COLLECTIONS = [
     # IT Command Center (see services/it_service.py)
     "it_incidents", "it_tasks", "emergency_access", "system_alerts",
     "deployment_history", "backup_jobs", "configuration_changes", "session_tracking",
+    "pf_settings", "pf_rules", "employee_pf_details", "payroll_pf_transactions", "pf_audit_logs", "pf_events",
+]
+
+# Constraints the document API can't express: (index name, collection, SQL after "ON <table>").
+# Unique expression indexes are the database-level backstop for checks the services also make.
+EXTRA_INDEXES = [
+    ("uq_pf_details_employee", "employee_pf_details", "((data->>'employee_id'))", True),
+    ("uq_pf_details_uan", "employee_pf_details", "((data->>'uan')) WHERE coalesce(data->>'uan', '') <> ''", True),
+    ("uq_pf_tx_payroll", "payroll_pf_transactions", "((data->>'payroll_id'))", True),
+    ("idx_pf_tx_employee_period", "payroll_pf_transactions", "((data->>'employee_id'), (data->>'calculation_date'))", False),
+    ("idx_pf_rules_from", "pf_rules", "((data->>'effective_from'))", False),
+    ("idx_pf_audit_employee", "pf_audit_logs", "((data->>'employee_id'), (data->>'created_at'))", False),
 ]
 
 
@@ -430,6 +442,11 @@ class DatabaseManager:
                         f"CREATE INDEX IF NOT EXISTS idx_col_{valid_name}_data ON {tbl} USING gin(data)"
                     ))
                     _ensured_tables.add(name)
+                for idx_name, coll, expr, unique in EXTRA_INDEXES:
+                    tbl = f"{settings.DB_SCHEMA}.col_{_validate_table_name(coll)}"
+                    await conn.execute(text(
+                        f"CREATE {'UNIQUE ' if unique else ''}INDEX IF NOT EXISTS {idx_name} ON {tbl} {expr}"
+                    ))
             logger.info("Successfully connected to PostgreSQL.")
         except Exception as e:
             # Postgres is the only supported store: fail fast rather than run on a local file.

@@ -117,7 +117,9 @@ function ApplyModal({ own, onClose, onDone }: { own?: boolean; onClose: () => vo
         <Select label="Duration" value={v.duration_type} onChange={set('duration_type')}>
           <option value="FULL_DAY">Full day</option><option value="FIRST_HALF">First half (0.5 day)</option><option value="SECOND_HALF">Second half (0.5 day)</option>
         </Select>
-        <Input label="Start date" type="date" required value={v.start_date} onChange={set('start_date')} error={errors.start_date} />
+        <Input label="Start date" type="date" required value={v.start_date} error={errors.start_date}
+          // The end date moves along so a range can never run backwards (e.g. 29 Aug → 28 Aug).
+          onChange={(e) => { const start = e.target.value; setV((s) => ({ ...s, start_date: start, end_date: s.end_date < start ? start : s.end_date })); }} />
         <Input label="End date" type="date" required value={v.end_date} min={v.start_date} onChange={set('end_date')} error={errors.end_date} />
         {needsCertificate && (
           <Input label="Medical certificate link" type="url" required value={v.medical_certificate_url} onChange={set('medical_certificate_url')} error={errors.medical_certificate_url} placeholder="https://…" className="sm:col-span-2" hint="Required for sick leave longer than 2 days." />

@@ -19,7 +19,7 @@ from starlette.datastructures import UploadFile
 from app.database import get_collection
 from app.routers.legal import assigned_to_me, full_legal_access, require_full_legal
 from app.services.auth_service import get_current_user
-from app.utils.validators import search_pattern, validate_email, validate_mobile
+from app.utils.validators import optional_phone, search_pattern, validate_email
 
 router = APIRouter(prefix="/api/client-documents", tags=["Client Documents"])
 
@@ -106,12 +106,14 @@ async def submit_documents(request: Request, user: Dict[str, Any] = Depends(get_
     # Every field is optional. Recognisable values are normalised (e.g. +91 numbers); anything else is kept as typed.
     email = _text(form, "email", "Email").lower()
     ok, clean_email = validate_email(email)
-    phone = _text(form, "phone", "Number", max_len=30)
-    ok_phone, clean_phone = validate_mobile(phone) if phone else (False, "")
+    try:
+        phone = optional_phone(_text(form, "phone", "Number", max_len=30), "Number")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     record: Dict[str, Any] = {
         "name": _text(form, "name", "Name", max_len=120),
         "email": clean_email if ok else email,
-        "phone": clean_phone if ok_phone else phone,
+        "phone": phone,
         "company_name": _text(form, "company_name", "Company name"),
         "gst_number": _optional_id(form, "gst_number", "GST number"),
         "msme_number": _optional_id(form, "msme_number", "MSME / Udyam number"),

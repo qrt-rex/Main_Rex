@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Query
 from app.schemas.employee import (
+    EmployeeAddRequest,
     EmployeeCreateRequest,
     EmployeeUpdateRequest,
     EmployeeResponse,
@@ -10,6 +11,9 @@ from app.schemas.employee import (
 )
 from app.services.employee_service import EmployeeService
 from app.services.auth_service import get_current_admin
+from app.services.log_service import LogService
+from app.services import pf_service
+from app.database import get_collection
 from app.utils.validators import row_error
 
 
@@ -44,9 +48,15 @@ def _employee_view(doc: Dict[str, Any]) -> EmployeeResponse:
 
 @router.post("", response_model=EmployeeResponse, include_in_schema=False)
 @router.post("/", response_model=EmployeeResponse)
-async def create_employee(req: EmployeeCreateRequest, admin: Dict[str, Any] = Depends(get_current_admin)):
-    """Create a new employee with structured salary breakdown."""
+async def create_employee(req: EmployeeAddRequest, request: Request, admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Create a new employee with structured salary breakdown and their sign-in account (password required)."""
     doc = await EmployeeService.create_employee(req)
+    if req.password:
+        await LogService.create_log(
+            action="USER_CREATE", performed_by=admin.get("email", ""), performed_by_role=admin.get("role", ""),
+            target=doc["email"], details={"message": f"Created sales account for {doc['email']} from Add employee"},
+            ip_address=request.client.host if request.client else "",
+        )
     return _employee_view(doc)
 
 @router.get("", response_model=EmployeeListResponse, include_in_schema=False)
@@ -136,12 +146,17 @@ async def get_employee_details(
 async def update_employee(
     emp_id: str,
     req: EmployeeUpdateRequest,
+    request: Request,
     admin: Dict[str, Any] = Depends(get_current_admin)
 ):
-    """Update employee details and recalculate salary components."""
+    """Update employee details and recalculate salary components (and PF, when basic or DA changed)."""
+    before = await get_collection("employees").find_one({"_id": emp_id})
     doc = await EmployeeService.update_employee(emp_id, req)
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+    after = await get_collection("employees").find_one({"_id": emp_id})
+    if before and after:
+        await pf_service.on_salary_change(before, after, admin, ip=request.client.host if request.client else "")
     return _employee_view(doc)
 
 @router.delete("/{emp_id}")

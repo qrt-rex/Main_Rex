@@ -6,11 +6,12 @@ import { Card, CardHeader } from '../components/common/Card';
 import { useAuth } from '../auth/AuthContext';
 import { api, ApiError } from '../lib/api';
 import { todayISO } from '../lib/format';
+import { GST_STATES } from '../lib/gst';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import type { InvoiceRequest } from './BillingRequests';
 
 const GST_RATES = [0, 5, 12, 18, 28];
 // GSTIN state code -> the state options this form offers.
-const GST_STATES: Record<string, string> = { '24': 'Gujarat', '27': 'Maharashtra', '08': 'Rajasthan', '07': 'Delhi', '29': 'Karnataka', '36': 'Telangana' };
 
 function addDaysISO(iso: string, days: number) {
   const d = new Date(`${iso}T00:00:00`);
@@ -62,7 +63,7 @@ export function InvoiceCreate() {
 
   const [branchKey, setBranchKey] = useState('ahmedabad_y');
   // Tax invoices are HR-only; everyone else with billing access issues proforma invoices.
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canTax = can('billing.tax_invoice');
   const [invoiceType, setInvoiceType] = useState(canTax ? 'invoice' : 'proforma');
   const [invoiceNumberPreview, setInvoiceNumberPreview] = useState('Loading...');
@@ -77,9 +78,9 @@ export function InvoiceCreate() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-  // Who the collections on this invoice are credited to (sales incentive); sales users default to themselves.
-  const [salesPeople, setSalesPeople] = useState<{ email: string; name: string }[]>([]);
-  const [salesPersonEmail, setSalesPersonEmail] = useState('');
+  // The invoice belongs to whoever creates it; issued for an invoice request it belongs to the requester.
+  // The server decides this from the session, so there is nothing to choose here.
+  const [requestOwner, setRequestOwner] = useState('');
 
   // Selected client details
   const [clientName, setClientName] = useState('');
@@ -133,12 +134,6 @@ export function InvoiceCreate() {
   }, [branchKey, invoiceType]);
 
   useEffect(() => {
-    api.get<{ items: { email: string; name: string }[] }>('/api/billing/sales-people')
-      .then((d) => setSalesPeople(d.items || []))
-      .catch(() => setSalesPeople([]));
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
     Promise.all([
       api.get<{ items: Client[] }>('/api/billing/clients'),
@@ -156,7 +151,7 @@ export function InvoiceCreate() {
           const stateCode = Object.entries(GST_STATES).find(([, name]) => name === req.client_state)?.[0] || req.client_gstin.slice(0, 2) || '99';
           setSelectedClientId('');
           setBranchKey(req.branch_key);
-          setSalesPersonEmail(req.sales_person_email || '');
+          setRequestOwner(req.requested_by_name || req.requested_by);
           setClientName(req.billing_name);
           setClientGstin(req.client_gstin);
           setClientAddress(req.billing_address);
@@ -173,7 +168,8 @@ export function InvoiceCreate() {
         }
         const fromLegal = params.get('client_name');
         if (!fromLegal) {
-          applyClient(cData.items?.[0]);
+          // ?client=<id>: opened from Sales > Customers.
+          applyClient(cData.items?.find((c) => c.id === params.get('client')) ?? cData.items?.[0]);
           return;
         }
         const gstin = (params.get('gstin') || '').toUpperCase();
@@ -295,6 +291,10 @@ export function InvoiceCreate() {
       showToast('The GSTIN should be 15 characters, e.g. 24ABCDE1234F1Z5', 'error');
       return;
     }
+    if (!isPhoneOk(clientPhone)) {
+      showToast(`Contact phone: ${PHONE_ERROR}`, 'error');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -328,18 +328,11 @@ export function InvoiceCreate() {
           amount: i.amount
         })),
         notes,
-        sales_person_email: salesPersonEmail || undefined,
+        request_id: requestId || undefined, // issuing it approves the request
       };
 
       const data = await api.post<{ invoice?: { id?: string; invoice_number?: string } }>('/api/billing/invoices', payload);
       showToast(`Invoice ${data.invoice?.invoice_number || ''} generated successfully!`, 'success');
-      if (requestId && data.invoice?.id) {
-        try {
-          await api.post(`/api/billing/requests/${requestId}/approve`, { invoice_id: data.invoice.id });
-        } catch (err) {
-          showToast(err instanceof ApiError ? err.message : 'The invoice was saved but the request could not be marked approved', 'warning');
-        }
-      }
       navigate('/billing/invoices');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Error generating invoice', 'error');
@@ -393,15 +386,10 @@ export function InvoiceCreate() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-text mb-1">Sales Person</label>
-              <select
-                value={salesPersonEmail}
-                onChange={(e) => setSalesPersonEmail(e.target.value)}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
-              >
-                <option value="">{can('billing.tax_invoice') ? 'None (no incentive)' : 'Myself'}</option>
-                {salesPeople.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
-              </select>
+              <span className="block text-xs font-medium text-text mb-1">Invoice owner</span>
+              <p className="rounded-md border border-border bg-surface-secondary px-3 py-2 text-sm text-text" title="An invoice always belongs to the person who creates it">
+                {requestOwner ? `${requestOwner} (requested it)` : `${user?.username || user?.email || 'You'} (you)`}
+              </p>
             </div>
 
             <div>
@@ -510,10 +498,9 @@ export function InvoiceCreate() {
               <div>
                 <label className="block text-xs font-medium text-text mb-1">Contact Phone</label>
                 <input
-                  type="text"
-                  placeholder="Phone"
+                  {...phoneInput}
                   value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
+                  onChange={(e) => setClientPhone(phoneDigits(e.target.value))}
                   className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
                 />
               </div>

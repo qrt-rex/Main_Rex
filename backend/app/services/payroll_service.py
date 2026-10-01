@@ -7,6 +7,7 @@ from app.services.advance_loan_service import AdvanceLoanService
 from app.services.audit_service import AuditService
 from app.services import sales_payroll
 from app.services.pdf_service import PDFService
+from app.services import pf_service
 from app.utils.validators import MONTH_NAMES, require_month_name, search_pattern
 from app.schemas.advanced_payroll import (
     SinglePayrollCalculationRequest,
@@ -55,6 +56,7 @@ class PayrollService:
                 "designation": emp.get("designation", ""),
                 "salary_type": "monthly",
                 "base_salary": base,
+                "dearness_allowance": float(emp.get("da", 0.0) or 0.0),
                 "hra_type": "fixed",
                 "hra_value": hra,
                 "conveyance_allowance": conv,
@@ -98,6 +100,7 @@ class PayrollService:
         if earnings:
             mapped["earnings"] = {
                 "basic": earnings.get("basic", 0.0),
+                "da": earnings.get("da", 0.0),
                 "hra": earnings.get("hra", 0.0),
                 "conveyance": earnings.get("conveyance", 0.0),
                 "special_allowance": earnings.get("special_allowance", 0.0),
@@ -135,7 +138,7 @@ class PayrollService:
         return mapped
 
     @classmethod
-    def calculate_salary_components(cls, req) -> Dict[str, Any]:
+    def calculate_salary_components(cls, req, pf_amount: Optional[float] = None) -> Dict[str, Any]:
         """
         Legacy lightweight salary calculator (flat request, no employee/attendance lookup).
         Delegates to the shared CalculationEngine for consistent, decimal-safe statutory math.
@@ -166,7 +169,7 @@ class PayrollService:
         approved_bonuses = [{"amount": req.bonus, "type": "Bonus"}] if req.bonus else []
 
         result = CalculationEngine.calculate_full_payroll(
-            salary_structure, attendance, approved_bonuses=approved_bonuses
+            salary_structure, attendance, approved_bonuses=approved_bonuses, pf_amount=pf_amount
         )
 
         return {
@@ -243,8 +246,13 @@ class PayrollService:
 
         # 1. Salary Structure
         structure = await cls.get_or_create_salary_structure(req.employee_id)
+        if "dearness_allowance" not in structure:  # structures created before DA existed
+            structure = {**structure, "dearness_allowance": float(emp.get("da") or 0.0)}
 
         month_no = MONTH_NAMES.index(req.month) + 1
+
+        # PF: the rule in force on the last day of this month, worked out by the PF engine (never the browser)
+        pf_snapshot = await pf_service.evaluate_for_payroll(emp, req.year, month_no, structure)
 
         # 2. Attendance Data: from the employee's Start Day / End Day punches (and approved leave) unless the
         # request states attendance itself, which then wins.
@@ -307,13 +315,9 @@ class PayrollService:
         # If direct bonus override provided in request, inject it
         if req.bonus_amount and req.bonus_amount > 0:
             db_bonuses.append({"amount": req.bonus_amount, "type": "Performance Bonus"})
-        # Sales collection incentive is worked out from client payments unless HR types an amount in.
-        incentive_details = None
-        if req.incentive_amount is None:
-            incentive_details = await sales_payroll.month_incentive(emp, structure, req.year, month_no)
-            if incentive_details and incentive_details["incentive"] > 0:
-                db_bonuses.append({"amount": incentive_details["incentive"], "type": "Sales Incentive"})
-        elif req.incentive_amount > 0:
+        # The sales collection incentive is NOT added to salary: HR works it out and exports it separately
+        # (HR > Sales incentives). Only an amount HR types in on purpose reaches the slip.
+        if req.incentive_amount and req.incentive_amount > 0:
             db_bonuses.append({"amount": req.incentive_amount, "type": "Sales Incentive"})
 
         manual_adjs = [m.model_dump() for m in (req.manual_adjustments or [])]
@@ -334,7 +338,8 @@ class PayrollService:
             approved_overtime=db_overtime,
             manual_adjustments=manual_adjs,
             advance_override=req.advance_deduction_override,
-            loan_override=req.loan_deduction_override
+            loan_override=req.loan_deduction_override,
+            pf_amount=pf_snapshot.get("employee_pf", 0.0)
         )
 
         payroll_id = f"REX-PAY-{req.year}{req.month[:3].upper()}-{emp.get('employee_code', 'EMP')}"
@@ -364,6 +369,10 @@ class PayrollService:
             "total_deductions": calc_result["total_deductions"],
             "net_salary": calc_result["net_salary"],
             "net_salary_words": calc_result["net_salary_words"],
+            # The PF figures and the rule they came from, kept with the record so they never change afterwards
+            "pf": pf_snapshot,
+            "employer_contribution": pf_snapshot.get("employer_pf", 0.0),
+            "ctc": round(calc_result["gross_salary"] + pf_snapshot.get("employer_pf", 0.0), 2),
             "currency": "INR",
             "advances_deducted": calc_result["advances_deducted"],
             "loans_deducted": calc_result["loans_deducted"],
@@ -383,7 +392,7 @@ class PayrollService:
             "email_sent": False,
             "email_sent_at": None,
             "remarks": req.remarks or "",
-            "incentive_details": incentive_details,
+            "incentive_details": None,  # the sales incentive is reported separately, never part of salary
             "attendance_source": "start_end_day" if derived else "manual",
             "created_at": now_str,
             "updated_at": now_str
@@ -402,6 +411,11 @@ class PayrollService:
                 # A recalculation is a new revision of the same record, not a brand-new one.
                 record["revision_number"] = existing.get("revision_number", 1)
                 record["created_at"] = existing.get("created_at", now_str)
+                previous_incentive = (existing.get("earnings") or {}).get("incentive", 0.0)
+                # Sales incentive audit trail: who recalculated, when, and what it was before and after.
+                record["incentive_history"] = [*(existing.get("incentive_history") or []), {
+                    "at": now_str, "by": user_email, "previous": previous_incentive,
+                    "new": record["earnings"].get("incentive", 0.0)}]
                 await payroll_col.update_one({"_id": existing["_id"]}, {"$set": record})
                 record["_id"] = str(existing["_id"])
                 record["id"] = str(existing["_id"])
@@ -410,6 +424,8 @@ class PayrollService:
                 record["_id"] = str(res.inserted_id)
                 record["id"] = str(res.inserted_id)
 
+            await pf_service.record_transaction(record, pf_snapshot)
+
             await AuditService.log_action(
                 user_email=user_email,
                 user_role="admin",
@@ -417,7 +433,8 @@ class PayrollService:
                 entity_type="payroll",
                 entity_id=record["_id"],
                 employee_name=emp.get("full_name"),
-                new_value={"net_salary": record["net_salary"]}
+                old_value={"incentive": previous_incentive} if existing else None,
+                new_value={"net_salary": record["net_salary"], "incentive": record["earnings"].get("incentive", 0.0)}
             )
 
         return record
@@ -470,7 +487,9 @@ class PayrollService:
                     "employee_code": emp_code,
                     "employee_name": emp_name,
                     "net_salary": rec["net_salary"],
-                    "status": rec["status"]
+                    "status": rec["status"],
+                    "pf_status": (rec.get("pf") or {}).get("status"),
+                    "pf_reason": (rec.get("pf") or {}).get("reason"),
                 })
             except Exception as e:
                 err_msg = str(e)
@@ -510,7 +529,14 @@ class PayrollService:
         earnings = dict(rec.get("earnings", {}))
         deductions = dict(rec.get("deductions", {}))
 
+        pf_snap = rec.get("pf")
+        before_basic, before_da = float(earnings.get("basic", 0) or 0), float(earnings.get("da", 0) or 0)
+        # The edit form sends every field back; only an actual change to engine-calculated PF is refused.
+        if pf_snap and edits.pf is not None and abs(float(edits.pf) - float(deductions.get("pf", 0) or 0)) > 0.005:
+            raise ValueError("Employee PF is calculated from the PF rules and the employee's PF details, so it can't be edited here. "
+                             "Change those (HR > PF management) and recalculate the payroll.")
         if edits.basic is not None: earnings["basic"] = float(edits.basic)
+        if edits.da is not None: earnings["da"] = float(edits.da)
         if edits.hra is not None: earnings["hra"] = float(edits.hra)
         if edits.conveyance is not None: earnings["conveyance"] = float(edits.conveyance)
         if edits.medical is not None: earnings["medical"] = float(edits.medical)
@@ -521,7 +547,7 @@ class PayrollService:
         if edits.incentive is not None: earnings["incentive"] = float(edits.incentive)
         if edits.other_earnings is not None: earnings["other_earnings"] = float(edits.other_earnings)
 
-        if edits.pf is not None: deductions["pf"] = float(edits.pf)
+        if edits.pf is not None and not pf_snap: deductions["pf"] = float(edits.pf)
         if edits.esi is not None: deductions["esi"] = float(edits.esi)
         if edits.professional_tax is not None: deductions["professional_tax"] = float(edits.professional_tax)
         if edits.tds is not None: deductions["tds"] = float(edits.tds)
@@ -538,8 +564,14 @@ class PayrollService:
             deductions["manual_adjustments"] = sum(m["amount"] for m in manual_list if m["type"] == "deduction")
             rec["manual_adjustments"] = manual_list
 
+        if pf_snap and (abs(float(earnings.get("basic", 0) or 0) - before_basic) > 0.005
+                        or abs(float(earnings.get("da", 0) or 0) - before_da) > 0.005):
+            pf_snap = pf_service.recalculate_snapshot(pf_snap, earnings.get("basic", 0), earnings.get("da", 0))
+            deductions["pf"] = pf_snap.get("employee_pf", 0.0)
+
         gross_salary = round(
             earnings.get("basic", 0) +
+            earnings.get("da", 0) +
             earnings.get("hra", 0) +
             earnings.get("conveyance", 0) +
             earnings.get("medical", 0) +
@@ -588,8 +620,14 @@ class PayrollService:
         }
         if "manual_adjustments" in rec:
             update_data["manual_adjustments"] = rec["manual_adjustments"]
+        if pf_snap:
+            update_data["pf"] = pf_snap
+            update_data["employer_contribution"] = pf_snap.get("employer_pf", 0.0)
+            update_data["ctc"] = round(gross_salary + pf_snap.get("employer_pf", 0.0), 2)
 
         await payroll_col.update_one({"_id": rec["_id"]}, {"$set": update_data})
+        if pf_snap:
+            await pf_service.record_transaction({**rec, **update_data}, pf_snap)
 
         await AuditService.log_action(
             user_email=user_email,
@@ -651,6 +689,11 @@ class PayrollService:
         if rec.get("is_locked", False):
             return fix_id(rec)
 
+        blockers = await pf_service.finalize_blockers(rec)
+        if blockers:
+            raise ValueError(f"PF information is incomplete for {rec.get('employee_name', 'this employee')}: {' '.join(blockers)} "
+                             "Complete it under HR > PF management (or mark the employee PF-exempt with a reason), then recalculate.")
+
         now_str = datetime.utcnow().isoformat()
         m = rec.get("month", "September")
         y = int(rec.get("year", 2026))
@@ -706,6 +749,10 @@ class PayrollService:
             "total_deductions": rec.get("total_deductions", 0.0),
             "net_salary": rec.get("net_salary", 0.0),
             "net_salary_words": rec.get("net_salary_words", ""),
+            "pf": rec.get("pf"),  # PF wage, employer PF, EPS and EPF as calculated: the payslip never recomputes them
+            "employer_contribution": rec.get("employer_contribution"),
+            "ctc": rec.get("ctc"),
+            "incentive_details": rec.get("incentive_details"),  # only payslips from before incentives left salary
             "payment_status": "Pending",
             "created_at": now_str
         }
@@ -732,6 +779,10 @@ class PayrollService:
                 "updated_at": now_str
             }}
         )
+
+        if rec.get("pf"):
+            await pf_service.record_transaction({**rec, "status": "FINALIZED"}, rec["pf"])
+            await pf_service.set_transaction_finalized(str(rec["_id"]), True)
 
         await AuditService.log_action(
             user_email=user_email,
@@ -787,6 +838,8 @@ class PayrollService:
                 "updated_at": now_str
             }}
         )
+
+        await pf_service.set_transaction_finalized(str(rec["_id"]), False)
 
         await AuditService.log_action(
             user_email=user_email,
@@ -1056,7 +1109,7 @@ class PayrollService:
         Returns a dict with old_value, new_value, employee_name, and recalculated totals.
         """
         VALID_FIELDS = [
-            "base_salary", "hra", "conveyance_allowance",
+            "base_salary", "da", "hra", "conveyance_allowance",
             "special_allowance", "professional_tax",
         ]
         if field not in VALID_FIELDS:
@@ -1086,15 +1139,16 @@ class PayrollService:
         update_set = {field: new_value, "updated_at": now}
 
         # Recalculate gross and net using the updated field
-        base = new_value if field == "base_salary" else float(emp.get("base_salary", 0.0))
-        hra = new_value if field == "hra" else float(emp.get("hra", 0.0))
-        conv = new_value if field == "conveyance_allowance" else float(emp.get("conveyance_allowance", 0.0))
-        special = new_value if field == "special_allowance" else float(emp.get("special_allowance", 0.0))
-        pf_opted = emp.get("pf_opted", True)
-        pt = new_value if field == "professional_tax" else float(emp.get("professional_tax", 200.0))
+        after = {**emp, field: new_value}
+        base = float(after.get("base_salary") or 0.0)
+        da = float(after.get("da") or 0.0)
+        hra = float(after.get("hra") or 0.0)
+        conv = float(after.get("conveyance_allowance") or 0.0)
+        special = float(after.get("special_allowance") or 0.0)
+        pt = float(after.get("professional_tax", 200.0))
 
-        gross = round(base + hra + conv + special, 2)
-        pf = round(base * 0.12, 2) if pf_opted else 0.0
+        gross = round(base + da + hra + conv + special, 2)
+        pf = await pf_service.estimate_employee_pf(after)  # PF rule in force today
         net = max(0.0, round(gross - (pf + pt), 2))
 
         update_set["gross_salary"] = gross

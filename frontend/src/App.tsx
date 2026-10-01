@@ -23,6 +23,12 @@ const Permissions = lazy(() => import('./pages/Permissions').then((m) => ({ defa
 const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
 const Automations = lazy(() => import('./pages/Automations').then((m) => ({ default: m.Automations })));
 const SalesHub = lazy(() => import('./sales/SalesHub').then((m) => ({ default: m.SalesHub })));
+const SalesLeads = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesLeads })));
+const SalesCustomers = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesCustomers })));
+const SalesDeals = lazy(() => import('./sales/CrmPages').then((m) => ({ default: m.SalesDeals })));
+const SalesScorecard = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.SalesScorecard })));
+const HrSalesIncentives = lazy(() => import('./sales/SalesScorecard').then((m) => ({ default: m.HrSalesIncentives })));
+const IncentiveSettings = lazy(() => import('./hr/pages/IncentiveSettings').then((m) => ({ default: m.IncentiveSettings })));
 const HrDashboard = lazy(() => import('./hr/pages/HrDashboard').then((m) => ({ default: m.HrDashboard })));
 const HrEmployees = lazy(() => import('./hr/pages/HrEmployees').then((m) => ({ default: m.HrEmployees })));
 const PersonForm = lazy(() => import('./hr/pages/PersonForm').then((m) => ({ default: m.PersonForm })));
@@ -38,6 +44,8 @@ const Advances = lazy(() => import('./hr/pages/Advances').then((m) => ({ default
 const Broadcasts = lazy(() => import('./hr/pages/Broadcasts').then((m) => ({ default: m.Broadcasts })));
 const DataImport = lazy(() => import('./hr/pages/DataImport').then((m) => ({ default: m.DataImport })));
 const PayrollSettings = lazy(() => import('./hr/pages/PayrollSettings').then((m) => ({ default: m.PayrollSettings })));
+const PfManagement = lazy(() => import('./hr/pf/PfManagement').then((m) => ({ default: m.PfManagement })));
+const MyPf = lazy(() => import('./pages/MyPf').then((m) => ({ default: m.MyPf })));
 
 const BillingSection = lazy(() => import('./billing/BillingSection').then((m) => ({ default: m.BillingSection })));
 const InvoicesList = lazy(() => import('./billing/InvoicesList').then((m) => ({ default: m.InvoicesList })));
@@ -108,6 +116,7 @@ export default function App() {
                     <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/my/pf" element={<Suspense fallback={<PageSkeleton />}><MyPf /></Suspense>} />
 
                     <Route path="/hr" element={<HrSection />}>
                       <Route index element={guard('hr-overview', <HrDashboard />)} />
@@ -123,6 +132,9 @@ export default function App() {
                       <Route path={relative('hr-performance', '/hr')} element={guard('hr-performance', <Performance />)} />
                       <Route path={relative('hr-payroll', '/hr')} element={guard('hr-payroll', <Payroll />)} />
                       <Route path={relative('hr-payslips', '/hr')} element={guard('hr-payslips', <Payslips />)} />
+                      <Route path={relative('hr-pf', '/hr')} element={guard('hr-pf', <PfManagement />)} />
+                      <Route path={relative('hr-sales-incentives', '/hr')} element={guard('hr-sales-incentives', <HrSalesIncentives />)} />
+                      <Route path={relative('hr-incentive-settings', '/hr')} element={guard('hr-incentive-settings', <IncentiveSettings />)} />
                       <Route path={relative('hr-advances', '/hr')} element={guard('hr-advances', <Advances />)} />
                       <Route path={relative('hr-broadcasts', '/hr')} element={guard('hr-broadcasts', <Broadcasts />)} />
                       <Route path={relative('hr-import', '/hr')} element={guard('hr-import', <DataImport />)} />
@@ -159,7 +171,12 @@ export default function App() {
                     <Route path="/admin/permissions" element={guard('admin-permissions', <Permissions />)} />
                     <Route path="/admin/activity" element={guard('admin-activity', <AuditLogs />)} />
                     <Route path="/admin/automations" element={guard('admin-automations', <Automations />)} />
+                    <Route path="/admin/sales-config" element={guard('admin-sales-config', <IncentiveSettings />)} />
                     <Route path="/sales/hub" element={guard('sales-hub', <SalesHub />)} />
+                    <Route path="/sales/scorecard" element={guard('sales-scorecard', <SalesScorecard />)} />
+                    <Route path="/sales/leads" element={guard('sales-leads', <SalesLeads />)} />
+                    <Route path="/sales/customers" element={guard('sales-customers', <SalesCustomers />)} />
+                    <Route path="/sales/deals" element={guard('sales-deals', <SalesDeals />)} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
                 </Route>

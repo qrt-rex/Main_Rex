@@ -1,6 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from app.utils.validators import optional_ifsc, require_choice, require_iso_date, require_mobile
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from app.utils.validators import optional_ifsc, require_choice, require_iso_date, require_mobile, require_strong_password
 
 EMPLOYEE_STATUSES = ["Active", "Probation", "Inactive", "Resigned", "Terminated"]
 JOINING_STATUSES = ["Pending", "Completed", "Joined"]
@@ -33,6 +33,18 @@ class _EmployeeFieldRules(BaseModel):
     def _doj(cls, v):
         return v if v is None else require_iso_date(v, "Date of joining")
 
+    @field_validator("date_of_exit", check_fields=False)
+    @classmethod
+    def _exit(cls, v):
+        return v if not v else require_iso_date(v, "Date of exit")  # "" clears it
+
+    @model_validator(mode="after")
+    def _exit_after_joining(self):
+        joined, left = getattr(self, "date_of_joining", None), getattr(self, "date_of_exit", None)
+        if joined and left and left < joined:
+            raise ValueError("The date of exit can't be before the date of joining.")
+        return self
+
     @field_validator("employee_status", check_fields=False)
     @classmethod
     def _status(cls, v):
@@ -55,7 +67,9 @@ class EmployeeCreateRequest(_EmployeeFieldRules):
     branch: Optional[str] = ""
     reporting_manager: Optional[str] = ""
     date_of_joining: str
+    date_of_exit: Optional[str] = ""  # last working day; payroll leaves the days after it unpaid
     base_salary: float = Money
+    da: float = Money  # dearness allowance (earning; part of the PF wage when a rule's basis is Basic + DA)
     hra: float = Money
     conveyance_allowance: float = Money
     special_allowance: float = Money
@@ -66,6 +80,26 @@ class EmployeeCreateRequest(_EmployeeFieldRules):
     ifsc_code: str = ""
     employee_status: str = "Active"  # Active, Probation, Inactive, Resigned, Terminated
     joining_status: str = "Completed"  # Pending, Completed
+    # Creates the employee's sign-in account (their email + this password). Never stored on the employee.
+    # Optional here because bulk import, the joining portal and intern conversion share this model.
+    password: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, v):
+        return require_strong_password(v) if v else None
+
+
+class EmployeeAddRequest(EmployeeCreateRequest):
+    """The Add employee form: every employee added there gets login credentials, so the password is required."""
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, v):
+        if not v:
+            raise ValueError("Set a password for the employee's login.")
+        return require_strong_password(v)
 
 class EmployeeUpdateRequest(_EmployeeFieldRules):
     full_name: Optional[str] = Field(default=None, max_length=120)
@@ -77,7 +111,9 @@ class EmployeeUpdateRequest(_EmployeeFieldRules):
     branch: Optional[str] = None
     reporting_manager: Optional[str] = None
     date_of_joining: Optional[str] = None
+    date_of_exit: Optional[str] = None  # "" clears it
     base_salary: Optional[float] = Field(default=None, ge=0, le=100_000_000)
+    da: Optional[float] = Field(default=None, ge=0, le=100_000_000)
     hra: Optional[float] = Field(default=None, ge=0, le=100_000_000)
     conveyance_allowance: Optional[float] = Field(default=None, ge=0, le=100_000_000)
     special_allowance: Optional[float] = Field(default=None, ge=0, le=100_000_000)
@@ -101,7 +137,9 @@ class EmployeeResponse(BaseModel):
     branch: Optional[str] = ""
     reporting_manager: Optional[str] = ""
     date_of_joining: str
+    date_of_exit: Optional[str] = ""
     base_salary: float
+    da: float = 0.0
     hra: float
     conveyance_allowance: float
     special_allowance: float = 0.0

@@ -16,7 +16,7 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService, get_current_admin, revoke_sessions, verify_2fa_temp_token
 from app.services.google_auth_service import GoogleAuthService, ALLOWED_DOMAINS, is_rexera_domain
-from app.services.otp_service import OTPService
+from app.services.otp_service import OTPService, send_window, MAX_SENDS_PER_WINDOW
 from app.services.email_service import EmailService
 from app.services.log_service import LogService
 from app.database import get_collection
@@ -24,6 +24,18 @@ from app.config import settings
 
 logger = logging.getLogger("rexera.router.auth")
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+
+def _reset_link_base(request: Request) -> str:
+    """Site the emailed reset link opens. The caller's Origin is used only when it is a known address
+    (COMPANY_WEBSITE, CORS_ORIGINS) or this machine: trusting any Origin would let someone send a real
+    reset email whose link leads to their own site and captures the token."""
+    site = settings.COMPANY_WEBSITE.rstrip("/")
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    trusted = {site, *(o.strip().rstrip("/") for o in settings.CORS_ORIGINS if o.strip() != "*")}
+    if origin and (origin in trusted or urlparse(origin).hostname in ("localhost", "127.0.0.1")):
+        return origin
+    return site
 
 
 @router.post("/login", response_model=AdminLoginResponse)
@@ -102,44 +114,32 @@ async def forgot_password(req: ForgotPasswordRequest, request: Request):
             detail="Only emails from @rexera.in, @rexera.com, or @rexera.co.in are allowed."
         )
 
-    # Determine frontend URL origin
-    origin = request.headers.get("origin")
-    if not origin:
-        referer = request.headers.get("referer")
-        if referer:
-            try:
-                p = urlparse(referer)
-                origin = f"{p.scheme}://{p.netloc}"
-            except Exception:
-                origin = None
-    if not origin:
-        origin = "http://localhost:5173"
-
     admin = await get_collection("admins").find_one({"email": clean_email})
-    if admin and admin.get("is_active", True):
-        # Generate secure random token
+    col = get_collection("otps")
+    now = datetime.utcnow()
+    send_count, window_started = send_window(
+        await col.find_one({"email": clean_email, "purpose": "password_reset"}), now)
+    # Over the send limit the answer is the same but no email goes out, so this never reveals an account.
+    if admin and admin.get("is_active", True) and send_count <= MAX_SENDS_PER_WINDOW:
         reset_token = secrets.token_urlsafe(32)
-        now = datetime.utcnow()
-        expires_at = now + timedelta(minutes=15)
-        col = get_collection("otps")
 
         # Invalidate old reset records
         while (await col.delete_one({"email": clean_email, "purpose": "password_reset"})).deleted_count:
             pass
 
-        # Save new token
         await col.insert_one({
             "email": clean_email,
             "otp": reset_token,
             "purpose": "password_reset",
-            "expires_at": expires_at.isoformat(),
+            "expires_at": (now + timedelta(minutes=15)).isoformat(),
             "used": False,
             "failed_attempts": 0,
+            "send_count": send_count,
+            "window_started": window_started.isoformat(),
             "created_at": now.isoformat()
         })
 
-        # Build reset link and send email
-        reset_url = f"{origin}/reset-password?token={reset_token}&email={quote(clean_email)}"
+        reset_url = f"{_reset_link_base(request)}/reset-password?token={reset_token}&email={quote(clean_email)}"
         await EmailService.send_password_reset_email(clean_email, reset_url)
 
     return {

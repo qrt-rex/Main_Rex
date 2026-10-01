@@ -30,14 +30,14 @@ const STATUSES = ['DRAFT', 'CALCULATED', 'UNDER_REVIEW', 'APPROVED', 'FINALIZED'
 const idOf = (p: PayrollRecord) => p.id || p._id || '';
 const isLocked = (p: PayrollRecord) => !!p.is_locked || p.status === 'FINALIZED' || p.status === 'PAID';
 
-const EARNINGS = [['basic', 'Basic'], ['hra', 'HRA'], ['conveyance', 'Conveyance'], ['medical', 'Medical allowance'], ['special_allowance', 'Special allowance'], ['bonus', 'Performance bonus'], ['incentive', 'Incentives'], ['overtime_pay', 'Overtime pay'], ['other_earnings', 'Other earnings']] as const;
+const EARNINGS = [['basic', 'Basic'], ['da', 'Dearness allowance'], ['hra', 'HRA'], ['conveyance', 'Conveyance'], ['medical', 'Medical allowance'], ['special_allowance', 'Special allowance'], ['bonus', 'Performance bonus'], ['incentive', 'Incentives'], ['overtime_pay', 'Overtime pay'], ['other_earnings', 'Other earnings']] as const;
 const DEDUCTIONS = [['pf', 'Provident fund'], ['esi', 'ESI'], ['professional_tax', 'Professional tax'], ['tds', 'TDS'], ['unpaid_leave_deduction', 'Unpaid leave'], ['late_deduction', 'Late marks'], ['salary_advance_deduction', 'Advance recovery'], ['loan_deduction', 'Loan EMI'], ['other_deductions', 'Other deductions']] as const;
 
 function initialValues(p: PayrollRecord) {
   const e = p.earnings ?? {};
   const d = p.deductions ?? {};
   return {
-    basic: e.basic ?? 0, hra: e.hra ?? 0, conveyance: e.conveyance ?? 0, medical: e.medical ?? 0, special_allowance: e.special_allowance ?? 0,
+    basic: e.basic ?? 0, da: e.da ?? 0, hra: e.hra ?? 0, conveyance: e.conveyance ?? 0, medical: e.medical ?? 0, special_allowance: e.special_allowance ?? 0,
     bonus: e.bonus ?? 0, incentive: e.incentive ?? 0, overtime_pay: e.overtime_pay ?? 0, other_earnings: (e.other_earnings ?? 0) + (e.manual_adjustments ?? 0),
     pf: d.pf ?? 0, esi: d.esi ?? 0, professional_tax: d.professional_tax ?? d.pt ?? 200, tds: d.tds ?? 0,
     unpaid_leave_deduction: d.unpaid_leave_deduction ?? d.lop_deduction ?? 0, late_deduction: d.late_deduction ?? 0,
@@ -58,6 +58,8 @@ function EditModal({ record, onClose, onSaved, onPreview }: { record: PayrollRec
   const net = Math.max(0, gross - deductions);
   const att = record.attendance ?? {};
   const locked = isLocked(record);
+  // PF from the PF engine is read-only here: the backend redoes it when basic or DA changes.
+  const pfFromEngine = !!record.pf;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -67,7 +69,7 @@ function EditModal({ record, onClose, onSaved, onPreview }: { record: PayrollRec
     }
     setBusy('save');
     try {
-      await editPayroll(idOf(record), { ...Object.fromEntries(Object.keys(v).map((k) => [k, num(k)])), remarks });
+      await editPayroll(idOf(record), { ...Object.fromEntries(Object.keys(v).filter((k) => !(pfFromEngine && k === 'pf')).map((k) => [k, num(k)])), remarks });
       showToast('Payroll recalculated and saved', 'success');
       onSaved();
       onClose();
@@ -94,8 +96,12 @@ function EditModal({ record, onClose, onSaved, onPreview }: { record: PayrollRec
     }
   };
 
+  const pfHint = record.pf && (record.pf.status === 'CALCULATED'
+    ? `On PF wage ${money(record.pf.pf_wage ?? 0, true)}${record.pf.rule_name ? ` · ${record.pf.rule_name}` : ''}. Recalculated on save if basic or DA changes.`
+    : record.pf.reason || 'Set by the PF rules.');
   const field = (k: string, label: string) => (
-    <Input key={k} label={label} type="number" step="0.01" min={0} value={v[k]} onChange={(e) => setV((s) => ({ ...s, [k]: e.target.value }))} disabled={locked || !can('hr.payroll.process')} inputClassName="tabular-nums text-right" />
+    <Input key={k} label={label} type="number" step="0.01" min={0} value={v[k]} onChange={(e) => setV((s) => ({ ...s, [k]: e.target.value }))}
+      disabled={locked || !can('hr.payroll.process') || (pfFromEngine && k === 'pf')} hint={pfFromEngine && k === 'pf' ? pfHint : undefined} inputClassName="tabular-nums text-right" />
   );
 
   return (

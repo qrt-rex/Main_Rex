@@ -44,7 +44,11 @@ export interface Employee {
   branch?: string;
   reporting_manager?: string;
   date_of_joining: string;
+  /** Last working day; payroll leaves the days after it unpaid. */
+  date_of_exit?: string;
   base_salary: number;
+  /** Dearness allowance (an earning; part of the PF wage when a PF rule's basis is Basic + DA). */
+  da?: number;
   hra: number;
   conveyance_allowance: number;
   special_allowance: number;
@@ -325,6 +329,10 @@ export interface PayrollRecord {
   attendance?: Record<string, number>;
   earnings?: Record<string, number>;
   deductions?: Record<string, number>;
+  /** PF the backend engine calculated for this payroll (absent on payroll run before PF management). */
+  pf?: { status: string; reason?: string; pf_wage?: number; wage_limited_by?: string | null; rule_name?: string | null; employee_pf?: number; employer_pf?: number };
+  employer_contribution?: number;
+  ctc?: number;
 }
 export interface PayrollMetrics { total_employees: number; processed_count: number; pending_count: number; total_gross_payroll: number; total_deductions: number; total_net_payroll: number }
 export const listPayroll = (p: { month: string; year: number; department?: string; status?: string }) => api.get<PayrollRecord[]>('/api/payroll', p);
@@ -367,11 +375,10 @@ export const deleteSlip = (id: string) => api.delete(`/api/payroll/slip/${id}`);
 export const calculateSalary = (body: Record<string, unknown>) => api.post<SalaryCalc>('/api/payroll/calculate-salary', body);
 export const generateSlip = (body: Record<string, unknown>) => api.post<SalarySlip>('/api/payroll/generate-slip', body);
 
-/** Sales staff: attendance from Start/End Day and the collection incentive payroll will use. */
+/** Sales staff: attendance from Start/End Day (the sales incentive is reported separately, not in payroll). */
 export interface SalesPayrollPreview {
   is_sales: boolean;
-  attendance: { working_days: number; full_days: number; half_days: number; absent_days: number; paid_leave_days: number; unpaid_leave_days: number; late_count: number; missed_end_day: number } | null;
-  incentive: { monthly_salary: number; collection: number; gate_amount: number; target_amount: number; mode: string; slab_percent: number | null; daily_incentive: number; weekly_incentive: number; monthly_incentive: number; incentive: number; note: string } | null;
+  attendance: { working_days: number; full_days: number; half_days: number; absent_days: number; paid_leave_days: number; unpaid_leave_days: number; late_count: number; missed_end_day: number; before_joining_days: number; after_exit_days: number } | null;
 }
 export const salesPayrollPreview = (employee_id: string, month: string, year: number) =>
   api.get<SalesPayrollPreview>('/api/payroll/sales-preview', { employee_id, month, year });

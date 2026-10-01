@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import { Plus, Trash2, X } from 'lucide-react';
 import { useToast } from '../components/common/ToastContext';
 import { useConfirm } from '../components/common/ConfirmDialog';
@@ -55,6 +56,10 @@ export function BillingClients() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPhoneOk(form.phone)) {
+      showToast(`Phone: ${PHONE_ERROR}`, 'error');
+      return;
+    }
     if (!form.name.trim()) {
       showToast('Enter the client name', 'error');
       return;
@@ -207,9 +212,9 @@ export function BillingClients() {
                 <div>
                   <label className="block text-xs font-medium text-text mb-1">Phone</label>
                   <input
-                    type="text"
+                    {...phoneInput}
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => setForm({ ...form, phone: phoneDigits(e.target.value) })}
                     className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
                   />
                 </div>

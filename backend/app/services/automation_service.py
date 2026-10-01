@@ -173,6 +173,27 @@ async def payroll_approval_reminder(ctx: Ctx) -> str:
     return f"Reminded HR about {len(records)} payroll record(s)."
 
 
+async def sales_incentive_month_end(ctx: Ctx) -> str:
+    """
+    On the 1st: records every sales person's final incentive for the month just ended (the same as HR's
+    "Calculate & record") and emails HR the totals. The incentive is paid separately, not through payroll.
+    """
+    from app.services import sales_payroll as sp
+
+    last = ctx.today.replace(day=1) - timedelta(days=1)
+    month, year = MONTHS[last.month - 1], last.year
+    done = await sp.record_month(year, last.month, "automation")
+    if not done:
+        return "No sales accounts."
+    total = sum(d["total_incentive"] for d in done)
+    msg = f"{month} {year}: {len(done)} sales person(s), total incentive {_money(total)}."
+    rows = [[d["employee_name"], _money(d["net_collection"]), d["eligibility_status"], _money(d["total_incentive"])] for d in done]
+    body = (f"<p>{_e(msg)} The incentive is paid separately from salary; download the report from "
+            "HR &gt; Sales incentives.</p>" + table_html(["Employee", "Net collection", "Eligibility", "Incentive"], rows))
+    await send(ctx.hr_email, f"Sales incentives for {month} {year}", "Sales incentives: month end", body)
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # Billing
 # ---------------------------------------------------------------------------
@@ -397,6 +418,9 @@ AUTOMATIONS: List[Dict[str, Any]] = [
     {"id": "payroll_approval_reminder", "category": "Payroll", "label": "Payroll approval reminder",
      "description": "Emails HR a list of payroll records that are calculated but not yet finalized.",
      "schedule": {"type": "daily", "time": "10:00"}, "handler": payroll_approval_reminder},
+    {"id": "sales_incentive_month_end", "category": "Payroll", "label": "Sales incentive month-end",
+     "description": "On the 1st, works out and records every sales person's final incentive for the month just ended and emails HR the totals. The incentive is paid separately from salary; the report is in HR > Sales incentives.",
+     "schedule": {"type": "monthly", "day": 1, "time": "07:00"}, "handler": sales_incentive_month_end},
     {"id": "invoice_reminders", "category": "Billing", "label": "Invoice payment reminders",
      "description": "Emails clients before an invoice is due, on the due date and at set days after it (one email per step). Only tax invoices with a client email.",
      "schedule": {"type": "daily", "time": "10:30"}, "handler": invoice_reminders,

@@ -251,6 +251,7 @@ class AttendanceSummary(BaseModel):
 
 class EarningsBreakdownDetail(BaseModel):
     basic: float = 0.0
+    da: float = 0.0
     hra: float = 0.0
     conveyance: float = 0.0
     medical: float = 0.0
@@ -369,11 +370,15 @@ class PayrollRecordResponse(BaseModel):
     remarks: Optional[str] = None
     incentive_details: Optional[Dict[str, Any]] = None
     attendance_source: Optional[str] = None
+    pf: Optional[Dict[str, Any]] = None  # PF engine snapshot (absent on payroll calculated before PF management)
+    employer_contribution: Optional[float] = None
+    ctc: Optional[float] = None
     created_at: str
     updated_at: str
 
 class PayrollEditRequest(BaseModel):
     basic: Optional[float] = _opt()
+    da: Optional[float] = _opt()
     hra: Optional[float] = _opt()
     conveyance: Optional[float] = _opt()
     medical: Optional[float] = _opt()

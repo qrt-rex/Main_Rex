@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.config import settings
+from app.config import Settings, settings
 from app.database import db_manager
 from app.services.auth_service import AuthService
 from app.seed import seed_database
@@ -48,6 +48,8 @@ from app.routers.ivr import router as ivr_router
 from app.routers.it_dashboard import router as it_dashboard_router
 from app.routers.client_work import router as client_work_router
 from app.services import client_work_service
+from app.routers.sales_performance import router as sales_performance_router
+from app.routers.pf import router as pf_router
 from app.services.automation_service import AutomationService
 from app.services.rbac_service import enforce, check_route_coverage
 
@@ -107,6 +109,17 @@ async def lifespan(app: FastAPI):
 
 IS_PRODUCTION = settings.APP_ENV.lower() == "production"
 
+# Production refuses to start with settings that would let anyone in: a JWT secret that is the public
+# default (anyone could sign their own session) or too short, or sign-in codes returned by the API.
+if IS_PRODUCTION:
+    _unsafe = [problem for bad, problem in (
+        (settings.JWT_SECRET_KEY == Settings.model_fields["JWT_SECRET_KEY"].default, "JWT_SECRET_KEY is the default value"),
+        (len(settings.JWT_SECRET_KEY) < 32, "JWT_SECRET_KEY is shorter than 32 characters"),
+        (settings.EMAIL_DEV_MODE, "EMAIL_DEV_MODE is True"),
+    ) if bad]
+    if _unsafe:
+        raise RuntimeError("Refusing to start with APP_ENV=production: " + "; ".join(_unsafe) + ".")
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
@@ -147,7 +160,7 @@ API_ROUTERS = [
     dashboard_router, logs_router, attendance_router, leaves_router, productivity_router,
     bulk_import_router, reports_router, broadcast_router, rbac_router, users_router,
     notifications_router, workspace_router, billing_router, legal_router, automations_router, it_dashboard_router,
-    client_documents_router, sales_hub_router, ivr_router, client_work_router,
+    client_documents_router, sales_hub_router, ivr_router, client_work_router, sales_performance_router, pf_router,
 ]
 for api_router in API_ROUTERS:
     app.include_router(api_router, dependencies=[Depends(enforce)])

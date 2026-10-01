@@ -4,6 +4,7 @@ import { Download, Gift, History, Pencil, Plus, Target, Trash2, Upload } from 'l
 import { saveBlob } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
 import { date, todayISO } from '../lib/format';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import { exportCsv, parseSpreadsheet } from '../lib/spreadsheet';
 import { Badge, StatusBadge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -33,19 +34,25 @@ const Toolbar = ({ children }: { children: React.ReactNode }) => <div className=
 const errText = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
 // ---------------------------------------------------------------- leads
-const EMPTY_LEAD = { name: '', company: '', phone: '', email: '', city: '', source: '', service_interest: '', notes: '', status: 'NEW', follow_up_date: '', assigned_user_id: '' };
+const EMPTY_LEAD = { name: '', company: '', phone: '', email: '', city: '', address: '', state: '', gstin: '', source: '', service_interest: '', notes: '', status: 'NEW', follow_up_date: '', assigned_user_id: '' };
 
 function LeadModal({ lead, people, onClose, onSaved }: { lead: Lead | null; people: Assignee[]; onClose: () => void; onSaved: () => void }) {
   const { showToast } = useToast();
   const [v, setV] = useState(() => lead ? {
-    name: lead.name, company: lead.company, phone: lead.phone, email: lead.email, city: lead.city, source: lead.source,
+    name: lead.name, company: lead.company, phone: lead.phone, email: lead.email, city: lead.city,
+    address: lead.address ?? '', state: lead.state ?? '', gstin: lead.gstin ?? '', source: lead.source,
     service_interest: lead.service_interest, notes: lead.notes, status: lead.status, follow_up_date: lead.follow_up_date ?? '',
     assigned_user_id: lead.assigned_to?.user_id ?? '',
   } : EMPTY_LEAD);
   const [saving, setSaving] = useState(false);
-  const set = (k: keyof typeof EMPTY_LEAD) => (e: { target: { value: string } }) => setV((s) => ({ ...s, [k]: e.target.value }));
+  const set = (k: keyof typeof EMPTY_LEAD) => (e: { target: { value: string } }) =>
+    setV((s) => ({ ...s, [k]: k === 'phone' ? phoneDigits(e.target.value) : k === 'gstin' ? e.target.value.toUpperCase() : e.target.value }));
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!isPhoneOk(v.phone)) {
+      showToast(`Phone: ${PHONE_ERROR}`, 'error');
+      return;
+    }
     setSaving(true);
     try {
       await saveLead(lead?.id ?? null, { ...v, assigned_user_id: v.assigned_user_id || null });
@@ -64,9 +71,12 @@ function LeadModal({ lead, people, onClose, onSaved }: { lead: Lead | null; peop
       <form id="lead-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         <Input label="Name" value={v.name} onChange={set('name')} />
         <Input label="Company" value={v.company} onChange={set('company')} />
-        <Input label="Phone" type="tel" value={v.phone} onChange={set('phone')} />
+        <Input label="Phone" {...phoneInput} value={v.phone} onChange={set('phone')} />
         <Input label="Email" value={v.email} onChange={set('email')} />
         <Input label="City" value={v.city} onChange={set('city')} />
+        <Input label="State" value={v.state} onChange={set('state')} placeholder="e.g. Gujarat" />
+        <Input label="Address" value={v.address} onChange={set('address')} />
+        <Input label="GSTIN" value={v.gstin} onChange={set('gstin')} maxLength={15} />
         <Input label="Source" value={v.source} onChange={set('source')} placeholder="e.g. Website, referral, expo" />
         <Input label="Service interest" value={v.service_interest} onChange={set('service_interest')} placeholder="e.g. GST registration" className="sm:col-span-2" />
         <Select label="Assign to" value={v.assigned_user_id} onChange={set('assigned_user_id')}>

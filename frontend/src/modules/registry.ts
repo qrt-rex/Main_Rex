@@ -1,7 +1,8 @@
 import {
   AlertTriangle, Archive, Banknote, BarChart3, Bell, Briefcase, CalendarClock, ClipboardList, CalendarDays, Contact, FileSpreadsheet,
   FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, KeyRound, LayoutDashboard, LineChart, Megaphone,
-  Monitor, PlusCircle, ScrollText, Scale, Server, ShieldCheck, SlidersHorizontal, Target, Terminal, TrendingUp, Upload, UserPlus,
+  Monitor, PiggyBank, PlusCircle, ScrollText, Scale, Server, ShieldCheck, SlidersHorizontal, Target, Terminal, TrendingUp, Trophy,
+  Upload, UserPlus,
   Users, UsersRound, Wallet, Workflow,
 } from 'lucide-react';
 import type { NavItem, NavSection } from '../types';
@@ -26,6 +27,9 @@ export const sections: NavSection[] = [
       { id: 'hr-performance', label: 'Performance', path: '/hr/performance', icon: LineChart, permission: 'hr.performance.view', description: 'Individual and company scorecards' },
       { id: 'hr-payroll', label: 'Payroll', path: '/hr/payroll', icon: Banknote, permission: 'hr.payroll.view', description: 'Monthly payroll runs and approvals' },
       { id: 'hr-payslips', label: 'Payslips', path: '/hr/payslips', icon: FileText, permission: 'hr.payroll.view', description: 'Salary register and payslip generation' },
+      { id: 'hr-pf', label: 'PF management', path: '/hr/pf', icon: PiggyBank, permission: 'hr.pf.view', description: 'PF dashboard, rules, employee PF details, PF payroll, reports and audit log' },
+      { id: 'hr-sales-incentives', label: 'Sales incentives', path: '/hr/sales-incentives', icon: Trophy, permission: 'hr.payroll.view', description: 'Each sales person\'s collections, eligibility and incentive for payroll' },
+      { id: 'hr-incentive-settings', label: 'Incentive settings', path: '/hr/incentive-settings', icon: SlidersHorizontal, permission: 'sales.incentives.configure', description: 'Daily, weekly and monthly incentive rules and slabs' },
       { id: 'hr-advances', label: 'Advances & loans', path: '/hr/advances', icon: HandCoins, permission: 'hr.advances.view', description: 'Advances, loans, bonuses and overtime' },
       { id: 'hr-broadcasts', label: 'Broadcasts', path: '/hr/broadcasts', icon: Megaphone, permission: 'hr.broadcasts.view', description: 'Company announcements and read receipts' },
       { id: 'hr-import', label: 'Data import', path: '/hr/import', icon: Upload, permission: 'hr.import.manage', description: 'Smart spreadsheet imports' },
@@ -39,9 +43,10 @@ export const sections: NavSection[] = [
     description: 'Customers, pipeline and contacts',
     items: [
       { id: 'sales-hub', label: 'Sales workspace', path: '/sales/hub', icon: Target, permission: 'sales.hub.manage', description: 'Leads, schemes, material, team progress and attendance' },
-      { id: 'sales-customers', label: 'Customers', path: '/sales/customers', icon: Users, permission: 'sales.customers.view', placeholder: true, description: 'Customer accounts' },
-      { id: 'sales-leads', label: 'Leads', path: '/sales/leads', icon: Target, permission: 'sales.leads.view', placeholder: true, description: 'Lead capture and qualification' },
-      { id: 'sales-deals', label: 'Deals', path: '/sales/deals', icon: Handshake, permission: 'sales.deals.view', placeholder: true, description: 'Sales pipeline' },
+      { id: 'sales-scorecard', label: 'Scorecard', path: '/sales/scorecard', icon: Trophy, permission: 'sales.scorecard.view', description: 'Collection leaderboard, targets and my performance' },
+      { id: 'sales-customers', label: 'Customers', path: '/sales/customers', icon: Users, permission: 'billing.view', description: 'Customers converted from leads' },
+      { id: 'sales-leads', label: 'Leads', path: '/sales/leads', icon: Target, permission: 'sales.leads.view', description: 'Your leads, and converting them to customers' },
+      { id: 'sales-deals', label: 'Deals', path: '/sales/deals', icon: Handshake, permission: 'sales.deals.view', description: 'Your invoices and how much has been collected' },
       { id: 'sales-contacts', label: 'Contacts', path: '/sales/contacts', icon: Contact, permission: 'sales.contacts.view', placeholder: true, description: 'Contact directory' },
     ],
   },
@@ -75,7 +80,7 @@ export const sections: NavSection[] = [
       { id: 'billing-quotations', label: 'Quotations', path: '/billing/quotations', icon: ScrollText, permission: 'billing.view', description: 'Draft, send and convert quotations' },
       { id: 'billing-clients', label: 'Billing Clients', path: '/billing/clients', icon: Users, permission: 'billing.manage', description: 'Customer CRM directory and GSTIN lookup' },
       { id: 'billing-payments', label: 'Payments', path: '/billing/payments', icon: Banknote, permission: 'billing.manage', description: 'Collections and receivables tracker' },
-      { id: 'billing-reports', label: 'Billing Reports', path: '/billing/reports', icon: BarChart3, permission: 'billing.view', description: 'Financial, GSTR-1 and aging reports' },
+      { id: 'billing-reports', label: 'GSTR & Reports', path: '/billing/reports', icon: BarChart3, permission: 'billing.gstr', description: 'GSTR-1, receivables aging and monthly register' },
       { id: 'billing-documents', label: 'Billing Documents', path: '/billing/documents', icon: FolderOpen, permission: 'billing.view', description: 'Shared rate cards, brochures and templates' },
     ],
   },
@@ -115,6 +120,7 @@ export const sections: NavSection[] = [
       { id: 'admin-permissions', label: 'Roles & permissions', path: '/admin/permissions', icon: ShieldCheck, permission: 'permissions.manage', description: 'What each role can access' },
       { id: 'admin-activity', label: 'Activity log', path: '/admin/activity', icon: ScrollText, permission: 'audit.view', description: 'Sign-ins and changes across the CRM' },
       { id: 'admin-automations', label: 'Automations', path: '/admin/automations', icon: Workflow, permission: 'automations.manage', description: 'Scheduled payroll, reminders and follow-up emails' },
+      { id: 'admin-sales-config', label: 'Sales configuration', path: '/admin/sales-config', icon: SlidersHorizontal, permission: 'sales.dsc.manage', description: 'DSC deduction and sales incentive rules' },
     ],
   },
 ];

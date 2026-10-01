@@ -1,0 +1,5 @@
+# Cloudflare Pages response headers (the backend adds the same ones when it serves the app itself).
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { saveBlob } from '../lib/api';
 import { date, number, todayISO } from '../lib/format';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import { Badge, StatusBadge, type BadgeTone } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Card, CardHeader } from '../components/common/Card';
@@ -147,16 +148,20 @@ export function QuickLeadModal({ onClose, onSaved }: { onClose: () => void; onSa
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
   const [v, setV] = useState({
-    name: '', company: '', phone: '', email: '', city: '', source: 'CRM Entry',
+    name: '', company: '', phone: '', email: '', city: '', address: '', state: '', gstin: '', source: 'CRM Entry',
     service_interest: '', status: 'NEW', follow_up_date: '', notes: '',
   });
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setV((prev) => ({ ...prev, [k]: e.target.value }));
+    setV((prev) => ({ ...prev, [k]: k === 'phone' ? phoneDigits(e.target.value) : k === 'gstin' ? e.target.value.toUpperCase() : e.target.value }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!v.name && !v.company && !v.phone) {
       showToast('Enter at least a name, company, or phone number', 'error');
+      return;
+    }
+    if (!isPhoneOk(v.phone)) {
+      showToast(`Phone number: ${PHONE_ERROR}`, 'error');
       return;
     }
     setSaving(true);
@@ -179,9 +184,12 @@ export function QuickLeadModal({ onClose, onSaved }: { onClose: () => void; onSa
       <form id="quick-lead-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         <Input label="Client Name" value={v.name} onChange={set('name')} placeholder="Full name" />
         <Input label="Company Name" value={v.company} onChange={set('company')} placeholder="Company / Org" />
-        <Input label="Phone Number *" type="tel" value={v.phone} onChange={set('phone')} placeholder="+91 98765 43210" required />
+        <Input label="Phone Number *" {...phoneInput} value={v.phone} onChange={set('phone')} required />
         <Input label="Email" type="email" value={v.email} onChange={set('email')} placeholder="name@client.com" />
         <Input label="City" value={v.city} onChange={set('city')} placeholder="City" />
+        <Input label="State" value={v.state} onChange={set('state')} placeholder="e.g. Gujarat" />
+        <Input label="Address" value={v.address} onChange={set('address')} placeholder="Office address" />
+        <Input label="GSTIN" value={v.gstin} onChange={set('gstin')} maxLength={15} placeholder="15 characters, if known" />
         <Input label="Lead Source" value={v.source} onChange={set('source')} placeholder="e.g. Inbound, Website, Direct" />
         <Input label="Service / Product Interest" value={v.service_interest} onChange={set('service_interest')} placeholder="e.g. Legal, HR, Compliance" className="sm:col-span-2" />
         <Select label="Initial Status" value={v.status} onChange={set('status')}>

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { isPhoneOk, PHONE_ERROR, phoneDigits, phoneInput } from '../lib/phone';
 import { FilePlus2, FolderOpen, Paperclip, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi } from '../lib/useApi';
@@ -81,7 +82,7 @@ export function ClientDocumentFormModal({ onClose, onSubmitted }: { onClose: () 
   const looksOff = (value: string, ok: RegExp, message: string) => (value.trim() && !ok.test(value.replace(/[\s-]/g, '').toUpperCase()) ? message : undefined);
   const warn = {
     email: looksOff(v.email, /^[^@]+@[^@]+\.[^@]+$/, "This doesn't look like an email address."),
-    phone: looksOff(v.phone, /^(\+?91)?[6-9]\d{9}$/, "This doesn't look like a 10-digit mobile number."),
+    phone: isPhoneOk(v.phone) ? undefined : PHONE_ERROR,
     gst_number: looksOff(v.gst_number, /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/, 'GST numbers are 15 characters, e.g. 24ABCDE1234F1Z5.'),
     msme_number: looksOff(v.msme_number, /^UDYAM[A-Z]{2}\d{9}$/, 'Udyam numbers look like UDYAM-GJ-01-0012345.'),
     aadhaar_number: looksOff(v.aadhaar_number, /^\d{12}$/, 'Aadhaar numbers have 12 digits.'),
@@ -126,7 +127,7 @@ export function ClientDocumentFormModal({ onClose, onSubmitted }: { onClose: () 
           <Input label="Name" value={v.name} onChange={set('name')} />
           <Input label="Company name" value={v.company_name} onChange={set('company_name')} />
           <Input label="Email" type="text" inputMode="email" value={v.email} onChange={set('email')} hint={warn.email} />
-          <Input label="Number" type="tel" value={v.phone} onChange={set('phone')} hint={warn.phone} placeholder="10-digit mobile" />
+          <Input label="Number" {...phoneInput} value={v.phone} onChange={(e) => setV((s) => ({ ...s, phone: phoneDigits(e.target.value) }))} error={warn.phone} />
         </fieldset>
         <fieldset className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Registration numbers</legend>

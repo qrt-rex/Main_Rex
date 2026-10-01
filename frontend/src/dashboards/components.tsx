@@ -233,9 +233,10 @@ export function AlertPanel({ title, alerts }: { title: string; alerts: { id: str
 
 export function TwoColumn({ main, side }: { main: ReactNode; side: ReactNode }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">{main}</div>
-      <div className="space-y-4">{side}</div>
+    // grid-cols-1 + min-w-0: a wide table scrolls inside its card instead of widening the whole page on tablets and phones.
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="min-w-0 space-y-4 lg:col-span-2">{main}</div>
+      <div className="min-w-0 space-y-4">{side}</div>
     </div>
   );
 }

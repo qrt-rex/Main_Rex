@@ -23,7 +23,7 @@ export function SalesTeamOverview() {
   return (
     <>
       <SectionTitle action={s.data.can_manage ? <ManageLink /> : undefined}>Sales team</SectionTitle>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <TeamProgressCard rows={s.data.progress} description="Every sales employee, today" />
         <AttendanceBoardCard rows={s.data.attendance} />
       </div>

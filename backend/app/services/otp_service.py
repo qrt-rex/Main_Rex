@@ -21,6 +21,20 @@ SEND_WINDOW_MINUTES = 15
 PUBLIC_PURPOSES = {"onboarding", "candidate_apply"}
 
 
+def send_window(previous: Optional[dict], now: datetime) -> Tuple[int, datetime]:
+    """(send_count, window_started) for a new code, carried over from the previous code for the same
+    email + purpose so replacing a code can't reset the counter. Over MAX_SENDS_PER_WINDOW = too many."""
+    if not previous:
+        return 1, now
+    try:
+        prev_start = datetime.fromisoformat(previous.get("window_started") or previous.get("created_at"))
+    except (TypeError, ValueError):
+        prev_start = now
+    if now - prev_start < timedelta(minutes=SEND_WINDOW_MINUTES):
+        return int(previous.get("send_count", 1)) + 1, prev_start
+    return 1, now
+
+
 class OTPService:
     @classmethod
     async def create_and_send_otp(cls, email: str, purpose: str = "login_2fa") -> Tuple[bool, str, Optional[str]]:
@@ -33,23 +47,13 @@ class OTPService:
         clean_email = email.strip().lower()
         now = datetime.utcnow()
 
-        # Carry the send counter over from the previous code so replacing a code can't reset it.
-        previous = await col.find_one({"email": clean_email, "purpose": purpose})
-        send_count, window_started = 1, now
-        if previous:
-            try:
-                prev_start = datetime.fromisoformat(previous.get("window_started") or previous.get("created_at"))
-            except (TypeError, ValueError):
-                prev_start = now
-            if now - prev_start < timedelta(minutes=SEND_WINDOW_MINUTES):
-                send_count = int(previous.get("send_count", 1)) + 1
-                window_started = prev_start
-            if send_count > MAX_SENDS_PER_WINDOW:
-                wait = SEND_WINDOW_MINUTES - int((now - prev_start).total_seconds() // 60)
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Too many verification codes requested. Please try again in {max(wait, 1)} minutes.",
-                )
+        send_count, window_started = send_window(await col.find_one({"email": clean_email, "purpose": purpose}), now)
+        if send_count > MAX_SENDS_PER_WINDOW:
+            wait = SEND_WINDOW_MINUTES - int((now - window_started).total_seconds() // 60)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many verification codes requested. Please try again in {max(wait, 1)} minutes.",
+            )
 
         # Invalidate old codes for this email and purpose
         while (await col.delete_one({"email": clean_email, "purpose": purpose})).deleted_count:
