@@ -407,7 +407,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
                 <Input label="Basic salary" type="number" min={0} required {...field('base_salary')} />
                 <div className="flex items-end gap-2">
                   <Input label="HRA" type="number" min={0} {...field('hra')} className="flex-1" />
-                  <Button variant="secondary" onClick={() => setValues((v) => ({ ...v, hra: String(Math.round((Number(v.base_salary) || 0) * 0.4)) }))}>40% of basic</Button>
+                  <Button variant="secondary" onClick={() => setValues((v) => ({ ...v, hra: String(Math.round((Number(v.base_salary) || 0) * 0.5)) }))}>50% of basic</Button>
                 </div>
                 <Input label="Conveyance allowance" type="number" min={0} {...field('conveyance_allowance')} />
                 <Input label="Special allowance" type="number" min={0} {...field('special_allowance')} />
