@@ -484,7 +484,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
 
         <div className="space-y-4">
           {kind === 'employee' && (
-            <Card className="lg:fixed lg:top-20 lg:right-8 lg:w-[380px]">
+            <Card className="lg:sticky lg:top-20">
               <CardHeader title="Salary preview" description="Per month, before TDS and LOP" />
               <dl className="text-sm">
                 {([
@@ -509,12 +509,12 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
                 <div className="flex justify-between bg-surface-secondary px-4 py-2"><dt className="font-medium text-text">Estimated net salary</dt><dd className="tabular-nums text-base font-semibold text-success">{money(preview.net, true)}</dd></div>
                 <div className="flex justify-between bg-surface-secondary px-4 py-2"><dt className="text-text-muted">CTC (gross + employer PF)</dt><dd className="tabular-nums text-text">{money(preview.ctc, true)}</dd></div>
               </dl>
+              <div className="flex gap-2 p-4 justify-between">
+                <Button variant="secondary" onClick={() => navigate(listPath)}>Cancel</Button>
+                <Button type="submit" loading={saving}>{editing ? 'Save changes' : kind === 'employee' ? 'Save employee' : 'Save intern'}</Button>
+              </div>
             </Card>
           )}
-          <div className="flex gap-2 lg:justify-end">
-            <Button variant="secondary" onClick={() => navigate(listPath)}>Cancel</Button>
-            <Button type="submit" loading={saving}>{editing ? 'Save changes' : kind === 'employee' ? 'Save employee' : 'Save intern'}</Button>
-          </div>
         </div>
       </form>
     </>
