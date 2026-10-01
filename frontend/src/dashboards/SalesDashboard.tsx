@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Briefcase, CalendarDays, Clock, FilePlus2, FolderKanban, ListChecks,
-  Megaphone, Plus, TriangleAlert, Users, Wallet,
+  Megaphone, PhoneCall, PiggyBank, Plus, TriangleAlert, Users, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { date, money, number } from '../lib/format';
@@ -20,6 +20,7 @@ import {
 import { DashboardIntro } from './DashboardShell';
 import { SalesToday } from '../sales/SalesToday';
 import { QuickLeadModal } from '../sales/SalesWidgets';
+import { openDialer } from '../sales/openDialer';
 import { MyPerformanceCard } from '../sales/MyPerformance';
 import { ClientDocumentFormModal, MyDocumentForms } from './ClientDocumentForm';
 import { PayslipPreview } from '../hr/components';
@@ -33,6 +34,8 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
   const [slipOpen, setSlipOpen] = useState<string | null>(null);
   const [formsVersion, setFormsVersion] = useState(0);
+
+  const canSales = can('sales.hub.view');
 
   const openLeave = me.leaves.filter((l) => (l.status ?? '').toUpperCase() === 'PENDING').length;
   const canSubmitDocs = can('documents.submit');
@@ -51,6 +54,11 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
         subtitle="Your day, leads to call, schemes, marketing material, sales knowledge, client progress & employee records."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canSales && (
+              <Button onClick={() => openDialer()} title="Opens the dialer in a new tab">
+                <PhoneCall size={15} /> Dialer
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setQuickLeadOpen(true)}>
               <Plus size={15} /> New CRM lead
             </Button>
@@ -78,7 +86,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
       )}
 
       {/* 1. Complete Sales Workspace: Calling, Dialer, Schemes, Flyers, Sales Info, Attendance */}
-      {can('sales.hub.view') && <SalesToday />}
+      {canSales && <SalesToday />}
 
       {/* Own collections, target and incentive (renders nothing for non-sales accounts) */}
       {can('sales.scorecard.view') && (
@@ -108,6 +116,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
         <StatCard icon={ListChecks} label="Your assigned tasks" value={number(me.tasks.length)} hint="Personal work queue" />
         <StatCard icon={CalendarDays} tone="warning" label="Leave requests" value={number(openLeave)} hint={`${me.leaves.length} on record`} to={can('hr.leave.view') ? '/hr/leave' : undefined} />
         {me.payslip && <StatCard icon={Wallet} tone="info" label="Latest payslip" value={money(me.payslip.net_salary)} hint={me.payslip.period || 'Most recent'} to={can('hr.payroll.view') ? '/hr/payroll' : undefined} />}
+        {me.employee && <StatCard icon={PiggyBank} tone="success" label="Provident fund" value="My PF" hint="UAN, PF wage and contributions" to="/my/pf" />}
         <PayslipPreview id={slipOpen} onClose={() => setSlipOpen(null)} />
         <StatCard icon={Megaphone} label="Company announcements" value={number(updates.length)} hint="Active updates" to={can('hr.broadcasts.view') ? '/hr/broadcasts' : undefined} />
       </StatGrid>

@@ -88,7 +88,7 @@ function ConvertModal({ intern, onClose, onDone }: { intern: Intern; onClose: ()
         <Input label="HRA" type="number" min={0} value={v.hra} onChange={set('hra')} />
         <Input label="Conveyance" type="number" min={0} value={v.conveyance_allowance} onChange={set('conveyance_allowance')} />
         <Input label="Special allowance" type="number" min={0} value={v.special_allowance} onChange={set('special_allowance')} />
-        <Checkbox label="Deduct provident fund" description="12% of basic" checked={v.pf_opted} onChange={set('pf_opted')} className="sm:col-span-2" />
+        <Checkbox label="Deduct provident fund" description="Worked out from the PF rules. Turning it off needs an exemption reason in PF details." checked={v.pf_opted} onChange={set('pf_opted')} className="sm:col-span-2" />
       </form>
     </Modal>
   );

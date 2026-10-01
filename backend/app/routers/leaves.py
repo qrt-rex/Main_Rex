@@ -38,10 +38,16 @@ def _code(emp: Dict[str, Any]) -> str:
 
 
 async def _alert_recipients(leave: Dict[str, Any]) -> Optional[List[str]]:
-    """HR-level requests go to the manager address (HR mailbox); HR's own leave goes to every active Admin / Super Admin."""
-    if leave.get("approval_level", "HR") == "HR":
+    """HR-level requests go to manager/HR; Sales leave goes to Legal/HR/Admin/SuperAdmin; HR leave to Admin/SuperAdmin; Admin leave to SuperAdmin."""
+    lvl = leave.get("approval_level", "HR")
+    if lvl == "HR":
         return None
-    allowed = {"admin", "superadmin"} if leave["approval_level"] == "ADMIN" else {"superadmin"}
+    if lvl == "SALES":
+        allowed = {"legal", "hr", "admin", "superadmin"}
+    elif lvl == "ADMIN":
+        allowed = {"admin", "superadmin"}
+    else:
+        allowed = {"superadmin"}
     accounts = await get_collection("admins").find({}).to_list(2000)
     return sorted({a["email"] for a in accounts if a.get("email") and a.get("is_active", True) and any(r in allowed for r in user_roles(a))}) or None
 

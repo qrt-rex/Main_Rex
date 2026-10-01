@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Settings, X } from 'lucide-react';
+import { ChevronDown, LayoutDashboard, PanelLeftClose, PanelLeftOpen, PiggyBank, Settings, X } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { visibleSections } from '../../modules/registry';
 import { usePersistedState } from '../../lib/useMediaQuery';
@@ -106,6 +106,7 @@ export function Sidebar({ rail, canToggleRail, onToggleRail, mobileOpen, onClose
 
   const footer = (isRail: boolean, onNavigate?: () => void) => (
     <div className={`space-y-0.5 border-t border-border py-2 ${isRail ? 'px-3.5' : 'px-3'}`}>
+      <Item item={{ path: '/my/pf', label: 'My PF', icon: PiggyBank }} rail={isRail} onNavigate={onNavigate} />
       <Item item={{ path: '/settings', label: 'Settings', icon: Settings }} rail={isRail} onNavigate={onNavigate} />
       {canToggleRail && !onNavigate && (
         <button

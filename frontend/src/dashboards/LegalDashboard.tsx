@@ -9,7 +9,9 @@ import {
   ChevronRight,
   Filter
 } from 'lucide-react';
-import { CheckCircle2, FolderOpen, Scale, Target, UserCheck } from 'lucide-react';
+import { CheckCircle2, ClipboardList, FolderOpen, Scale, Target, UserCheck } from 'lucide-react';
+import { ClientWorkWidget } from '../clientwork/ClientWorkWidget';
+import { WorkBoard } from '../clientwork/WorkBoard';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api, API_BASE } from '../lib/api';
@@ -18,12 +20,13 @@ import { LegalClientDocuments } from './LegalClientDocuments';
 import { LegalApprovals, LegalAssignClients } from './LegalClients';
 import { LegalExportButton, LegalImportButton, LegalOverview } from './LegalDataTools';
 
-type LegalSection = 'records' | 'documents' | 'assign' | 'approvals';
-const LEGAL_SECTIONS: { id: LegalSection; label: string; description: string; icon: typeof Scale }[] = [
+type LegalSection = 'records' | 'documents' | 'assign' | 'monitoring' | 'approvals';
+const LEGAL_SECTIONS: { id: LegalSection; label: string; description: string; icon: typeof Scale; permission?: string }[] = [
   { id: 'records', label: 'Legal records', description: 'Legal document review and compliance management', icon: Scale },
   { id: 'documents', label: 'Client documents', description: 'Document forms staff collected from clients', icon: FolderOpen },
   { id: 'assign', label: 'Assign clients', description: 'Give each client to the staff member who handles it', icon: UserCheck },
-  { id: 'approvals', label: 'Approvals', description: "Every assigned client's services, approved here and billed in Bill & Invoices", icon: CheckCircle2 },
+  { id: 'monitoring', label: 'Client work monitoring', description: 'Every assigned client from first action to completion, updating live', icon: ClipboardList, permission: 'clientwork.monitor' },
+  { id: 'approvals', label: 'Approvals', description: "Salesperson leave requests and assigned client services awaiting approval", icon: CheckCircle2 },
 ];
 
 interface LegalRecord {
@@ -54,7 +57,8 @@ export function LegalDashboard() {
   const [dataVersion, setDataVersion] = useState(0);
   // The open section lives in the URL (?section=…) so it survives a refresh and can be linked.
   const [params, setParams] = useSearchParams();
-  const section = (LEGAL_SECTIONS.some((s) => s.id === params.get('section')) ? params.get('section') : 'records') as LegalSection;
+  const sections = LEGAL_SECTIONS.filter((s) => !s.permission || can(s.permission));
+  const section = (sections.some((s) => s.id === params.get('section')) ? params.get('section') : 'records') as LegalSection;
   const setSection = (id: LegalSection) => setParams(id === 'records' ? {} : { section: id }, { replace: true });
 
   const [records, setRecords] = useState<LegalRecord[]>([]);
@@ -195,11 +199,11 @@ export function LegalDashboard() {
     // The app header already shows the account and sign-out, so this page has no header bar of its own.
     <div className="text-slate-900 dark:text-slate-100 pb-16 font-sans">
       <div className="max-w-7xl mx-auto">
-       <div className="grid gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
         {/* Section sidebar */}
-        <nav aria-label="Legal sections" className="self-start lg:sticky lg:top-24">
+        <nav aria-label="Legal sections" className="min-w-0 self-start lg:sticky lg:top-24">
           <ul className="flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-col">
-            {LEGAL_SECTIONS.map(({ id, label, icon: Icon }) => (
+            {sections.map(({ id, label, icon: Icon }) => (
               <li key={id} className="shrink-0">
                 <button
                   type="button"
@@ -254,6 +258,12 @@ export function LegalDashboard() {
         {section === 'documents' && <LegalClientDocuments />}
         {section === 'assign' && <LegalAssignClients />}
         {section === 'approvals' && <LegalApprovals />}
+        {section === 'monitoring' && (
+          <div className="space-y-6">
+            <ClientWorkWidget />
+            <WorkBoard monitor />
+          </div>
+        )}
 
         {section === 'records' && <>
         {/* Filter Card */}

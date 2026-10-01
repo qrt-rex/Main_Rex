@@ -1,7 +1,8 @@
 import {
-  Banknote, BarChart3, Briefcase, CalendarClock, CalendarDays, Contact, FileSpreadsheet,
-  FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, LayoutDashboard, LineChart, Megaphone,
-  PlusCircle, ScrollText, Scale, ShieldCheck, SlidersHorizontal, Target, TrendingUp, Trophy, Upload, UserPlus,
+  AlertTriangle, Archive, Banknote, BarChart3, Bell, Briefcase, CalendarClock, ClipboardList, CalendarDays, Contact, FileSpreadsheet,
+  FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, KeyRound, LayoutDashboard, LineChart, Megaphone,
+  Monitor, PiggyBank, PlusCircle, ScrollText, Scale, Server, ShieldCheck, SlidersHorizontal, Target, Terminal, TrendingUp, Trophy,
+  Upload, UserPlus,
   Users, UsersRound, Wallet, Workflow,
 } from 'lucide-react';
 import type { NavItem, NavSection } from '../types';
@@ -26,6 +27,7 @@ export const sections: NavSection[] = [
       { id: 'hr-performance', label: 'Performance', path: '/hr/performance', icon: LineChart, permission: 'hr.performance.view', description: 'Individual and company scorecards' },
       { id: 'hr-payroll', label: 'Payroll', path: '/hr/payroll', icon: Banknote, permission: 'hr.payroll.view', description: 'Monthly payroll runs and approvals' },
       { id: 'hr-payslips', label: 'Payslips', path: '/hr/payslips', icon: FileText, permission: 'hr.payroll.view', description: 'Salary register and payslip generation' },
+      { id: 'hr-pf', label: 'PF management', path: '/hr/pf', icon: PiggyBank, permission: 'hr.pf.view', description: 'PF dashboard, rules, employee PF details, PF payroll, reports and audit log' },
       { id: 'hr-sales-incentives', label: 'Sales incentives', path: '/hr/sales-incentives', icon: Trophy, permission: 'hr.payroll.view', description: 'Each sales person\'s collections, eligibility and incentive for payroll' },
       { id: 'hr-incentive-settings', label: 'Incentive settings', path: '/hr/incentive-settings', icon: SlidersHorizontal, permission: 'sales.incentives.configure', description: 'Daily, weekly and monthly incentive rules and slabs' },
       { id: 'hr-advances', label: 'Advances & loans', path: '/hr/advances', icon: HandCoins, permission: 'hr.advances.view', description: 'Advances, loans, bonuses and overtime' },
@@ -58,6 +60,15 @@ export const sections: NavSection[] = [
     ],
   },
   {
+    id: 'clientwork',
+    label: 'Client Work',
+    icon: ClipboardList,
+    description: 'Assigned client work, holds and completion',
+    items: [
+      { id: 'client-work', label: 'Client work', path: '/client-work', icon: ClipboardList, permission: 'clientwork.view', description: 'Need action, on hold and completed client work, live' },
+    ],
+  },
+  {
     id: 'billing',
     label: 'Bill & Invoice',
     icon: FileSpreadsheet,
@@ -82,6 +93,21 @@ export const sections: NavSection[] = [
       { id: 'ops-finance', label: 'Finance', path: '/finance', icon: Wallet, permission: 'finance.view', placeholder: true, description: 'Invoicing and revenue' },
       { id: 'ops-projects', label: 'Projects', path: '/projects', icon: FolderKanban, permission: 'projects.view', placeholder: true, description: 'Client project delivery' },
       { id: 'ops-reports', label: 'Reports', path: '/reports', icon: BarChart3, permission: 'reports.view', placeholder: true, description: 'Cross-module analytics' },
+    ],
+  },
+  {
+    id: 'it',
+    label: 'IT Command Center',
+    icon: Server,
+    description: 'Infrastructure, security and operations',
+    items: [
+      { id: 'it-overview', label: 'IT Overview', path: '/dashboard/it', icon: Monitor, permission: 'it.systems.view', description: 'System health, metrics and live status' },
+      { id: 'it-incidents', label: 'Incidents', path: '/dashboard/it', icon: AlertTriangle, permission: 'it.incidents.manage', description: 'IT incident management' },
+      { id: 'it-tasks', label: 'IT Tasks', path: '/dashboard/it', icon: Terminal, permission: 'it.tasks.manage', description: 'Infrastructure and maintenance tasks' },
+      { id: 'it-alerts', label: 'Alerts', path: '/dashboard/it', icon: Bell, permission: 'it.systems.view', description: 'Real-time system alerts' },
+      { id: 'it-deployments', label: 'Deployments', path: '/dashboard/it', icon: Upload, permission: 'it.deployment.view', description: 'Release history and rollback' },
+      { id: 'it-backups', label: 'Backups', path: '/dashboard/it', icon: Archive, permission: 'it.backup.manage', description: 'Backup and recovery center' },
+      { id: 'it-emergency', label: 'Emergency Access', path: '/dashboard/it', icon: KeyRound, permission: 'it.emergency.manage', description: 'Break-glass emergency access' },
     ],
   },
   {

@@ -63,7 +63,7 @@ function Balances() {
   );
 }
 
-const LEVEL_LABEL = { HR: 'HR', ADMIN: 'Admin', SUPERADMIN: 'Super Admin' } as const;
+const LEVEL_LABEL: Record<string, string> = { SALES: 'Legal / HR', HR: 'HR', ADMIN: 'Admin', SUPERADMIN: 'Super Admin' };
 
 /** own: request your own leave (no employee picker); otherwise HR files it on behalf of an employee. */
 function ApplyModal({ own, onClose, onDone }: { own?: boolean; onClose: () => void; onDone: () => void }) {

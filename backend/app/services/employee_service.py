@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException, status
 from app.database import get_collection, fix_id, fix_ids
 from app.schemas.employee import EmployeeCreateRequest, EmployeeUpdateRequest
+from app.services import pf_service
+from app.utils.security import hash_password
 from app.utils.validators import mask_account_number, search_pattern
 
 logger = logging.getLogger("rexera.employees")
@@ -45,21 +47,27 @@ class EmployeeService:
         now = datetime.utcnow().isoformat()
 
         doc = req.model_dump()
+        password = doc.pop("password", None)  # only its hash is kept, on the sign-in account
         doc["email"] = str(doc["email"]).strip().lower()
         doc["employee_code"] = (doc.get("employee_code") or "").strip()
         await cls.ensure_unique(email=doc["email"], employee_code=doc["employee_code"] or None)
+        # Never take over an existing account (it may belong to an admin): those are managed under Users.
+        if password and await get_collection("admins").find_one({"email": doc["email"]}):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail=f"A login account for {doc['email']} already exists. Use the employee's own email, or manage that account under Users.")
         if not doc.get("employee_code"):
             doc["employee_code"] = await cls.generate_next_employee_code()
             
         doc["gross_salary"] = (
             doc.get("base_salary", 0.0) +
+            doc.get("da", 0.0) +
             doc.get("hra", 0.0) +
             doc.get("conveyance_allowance", 0.0) +
             doc.get("special_allowance", 0.0)
         )
         
-        # Estimate net salary with standard PF (12% basic) + PT (200)
-        pf = (doc["base_salary"] * 0.12) if doc.get("pf_opted", True) else 0.0
+        # Estimated take-home: employee PF from the PF rule in force today (pf_engine) + PT
+        pf = await pf_service.estimate_employee_pf(doc)
         pt = doc.get("professional_tax", 200.0)
         doc["estimated_net_salary"] = max(0.0, doc["gross_salary"] - (pf + pt))
         
@@ -69,6 +77,12 @@ class EmployeeService:
         res = await col.insert_one(doc)
         doc["id"] = str(res.inserted_id)
         doc["_id"] = str(res.inserted_id)
+        if password:
+            await get_collection("admins").insert_one({
+                "username": doc["full_name"], "email": doc["email"], "role": "sales",  # Employee / Sales Person
+                "password_hash": hash_password(password), "is_active": True,
+                "created_at": now, "updated_at": now, "last_login": None,
+            })
         return doc
 
     @classmethod
@@ -140,17 +154,22 @@ class EmployeeService:
         if "•" in str(update_data.get("account_no", "")):
             update_data.pop("account_no")
 
+        # Once PF details are recorded they decide PF applicability (an exemption needs a reason there).
+        if "pf_opted" in update_data and await get_collection("employee_pf_details").find_one({"employee_id": emp_id}):
+            update_data.pop("pf_opted")
+
         # Recalculate salary if salary fields updated
         if current:
-            base = update_data.get("base_salary", current.get("base_salary", 0.0))
-            hra = update_data.get("hra", current.get("hra", 0.0))
-            conveyance = update_data.get("conveyance_allowance", current.get("conveyance_allowance", 0.0))
-            special = update_data.get("special_allowance", current.get("special_allowance", 0.0))
-            pf_opt = update_data.get("pf_opted", current.get("pf_opted", True))
-            pt = update_data.get("professional_tax", current.get("professional_tax", 200.0))
-            
-            gross = base + hra + conveyance + special
-            pf = (base * 0.12) if pf_opt else 0.0
+            merged = {**current, **update_data}
+            base = merged.get("base_salary", 0.0) or 0.0
+            da = merged.get("da", 0.0) or 0.0
+            hra = merged.get("hra", 0.0) or 0.0
+            conveyance = merged.get("conveyance_allowance", 0.0) or 0.0
+            special = merged.get("special_allowance", 0.0) or 0.0
+            pt = merged.get("professional_tax", 200.0)
+
+            gross = base + da + hra + conveyance + special
+            pf = await pf_service.estimate_employee_pf(merged)
             net = max(0.0, gross - (pf + pt))
             
             update_data["gross_salary"] = gross
@@ -162,7 +181,7 @@ class EmployeeService:
             await cls.sync_salary_structure(emp_id)
         return await cls.get_employee_by_id(emp_id)
 
-    SALARY_FIELDS = ("base_salary", "hra", "conveyance_allowance", "special_allowance", "pf_opted", "professional_tax")
+    SALARY_FIELDS = ("base_salary", "da", "hra", "conveyance_allowance", "special_allowance", "pf_opted", "professional_tax")
 
     @classmethod
     async def sync_salary_structure(cls, emp_id: str) -> None:
@@ -174,6 +193,7 @@ class EmployeeService:
             return  # no structure yet: payroll builds it from the employee record on first run
         changes: Dict[str, Any] = {
             "base_salary": float(emp.get("base_salary") or 0),
+            "dearness_allowance": float(emp.get("da") or 0),
             "conveyance_allowance": float(emp.get("conveyance_allowance") or 0),
             "special_allowance": float(emp.get("special_allowance") or 0),
             "pf_opted": bool(emp.get("pf_opted", True)),

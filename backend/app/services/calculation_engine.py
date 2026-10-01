@@ -34,11 +34,15 @@ class CalculationEngine:
         manual_adjustments: Optional[List[Dict[str, Any]]] = None,
         settings: Optional[Dict[str, Any]] = None,
         advance_override: Optional[float] = None,
-        loan_override: Optional[float] = None
+        loan_override: Optional[float] = None,
+        pf_amount: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Executes complete salary calculation incorporating Attendance, Leaves, Overtime,
         Bonuses, Advances, Loans, Statutory Rules (PF, PT, ESI, TDS) and Manual Adjustments.
+
+        pf_amount: the employee PF worked out by the PF engine (pf_engine) for this month. Payroll always
+        passes it; the structure's own PF settings are only a fallback for callers that don't.
         """
         settings = settings or {}
         advances = advances or []
@@ -49,6 +53,7 @@ class CalculationEngine:
 
         # --- 1. Basic & Allowances ---
         base_salary_d = cls._to_decimal(salary_structure.get("base_salary", 0.0))
+        da_d = cls._to_decimal(salary_structure.get("dearness_allowance", 0.0))
         
         # HRA calculation
         hra_type = salary_structure.get("hra_type", "fixed")
@@ -89,7 +94,7 @@ class CalculationEngine:
         )
 
         # Standard Monthly Gross (Base + Core Allowances)
-        standard_gross_d = base_salary_d + hra_d + conveyance_d + medical_d + special_d + other_allow_d
+        standard_gross_d = base_salary_d + da_d + hra_d + conveyance_d + medical_d + special_d + other_allow_d
         
         # Total Earnings
         gross_salary_d = standard_gross_d + overtime_pay_d + bonus_d + incentive_d + other_earnings_d + manual_earnings_d
@@ -116,11 +121,13 @@ class CalculationEngine:
             late_deduction_d = Decimal(str(late_count * 100))
 
         # --- 7. Statutory Deductions ---
-        # PF Calculation
+        # PF Calculation: the PF engine's figure when given (payroll always gives it)
         pf_opted = salary_structure.get("pf_opted", True)
         pf_type = salary_structure.get("pf_type", "percentage_12")
         pf_d = Decimal("0.00")
-        if pf_opted and base_salary_d > Decimal("0.00"):
+        if pf_amount is not None:
+            pf_d = cls._to_decimal(pf_amount)
+        elif pf_opted and base_salary_d > Decimal("0.00"):
             if pf_type == "percentage_12":
                 pf_d = base_salary_d * Decimal("0.12")
             elif pf_type == "fixed":
@@ -213,6 +220,7 @@ class CalculationEngine:
         return {
             "earnings": {
                 "basic": cls._round_2(base_salary_d),
+                "da": cls._round_2(da_d),
                 "hra": cls._round_2(hra_d),
                 "conveyance": cls._round_2(conveyance_d),
                 "medical": cls._round_2(medical_d),

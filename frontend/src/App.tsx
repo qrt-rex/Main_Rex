@@ -44,6 +44,8 @@ const Advances = lazy(() => import('./hr/pages/Advances').then((m) => ({ default
 const Broadcasts = lazy(() => import('./hr/pages/Broadcasts').then((m) => ({ default: m.Broadcasts })));
 const DataImport = lazy(() => import('./hr/pages/DataImport').then((m) => ({ default: m.DataImport })));
 const PayrollSettings = lazy(() => import('./hr/pages/PayrollSettings').then((m) => ({ default: m.PayrollSettings })));
+const PfManagement = lazy(() => import('./hr/pf/PfManagement').then((m) => ({ default: m.PfManagement })));
+const MyPf = lazy(() => import('./pages/MyPf').then((m) => ({ default: m.MyPf })));
 
 const BillingSection = lazy(() => import('./billing/BillingSection').then((m) => ({ default: m.BillingSection })));
 const InvoicesList = lazy(() => import('./billing/InvoicesList').then((m) => ({ default: m.InvoicesList })));
@@ -57,6 +59,17 @@ const BillingDocuments = lazy(() => import('./billing/BillingDocuments').then((m
 const CandidateApply = lazy(() => import('./pages/public/CandidateApply').then((m) => ({ default: m.CandidateApply })));
 const JoiningPortal = lazy(() => import('./pages/public/JoiningPortal').then((m) => ({ default: m.JoiningPortal })));
 const LegalDashboard = lazy(() => import('./dashboards/LegalDashboard').then((m) => ({ default: m.LegalDashboard })));
+const ClientWorkPage = lazy(() => import('./clientwork/ClientWorkPage').then((m) => ({ default: m.ClientWorkPage })));
+const ClientWorkWorkspace = lazy(() => import('./clientwork/ClientWorkWorkspace').then((m) => ({ default: m.ClientWorkWorkspace })));
+const IvrApp = lazy(() => import('./ivr/IvrApp').then((m) => ({ default: m.IvrApp })));
+const DialerPage = lazy(() => import('./sales/DialerPage').then((m) => ({ default: m.DialerPage })));
+
+/** Full-screen pages that open in their own tab (no CRM shell). */
+const standalone = (permission: string, element: ReactNode) => (
+  <RequirePermission permission={permission}>
+    <Suspense fallback={<PageSkeleton />}>{element}</Suspense>
+  </RequirePermission>
+);
 
 /** Route element guarded by the same permission the registry uses for navigation. */
 const guard = (id: string, element: ReactNode) => (
@@ -89,6 +102,10 @@ export default function App() {
                 <Route path="/admin-login.html" element={<Navigate to="/login" replace />} />
 
                 <Route element={<RequireAuth />}>
+                  {/* IVR console and the sales dialer: own tab, IVR sign-in first */}
+                  <Route path="/ivr" element={standalone('sales.hub.view', <IvrApp />)} />
+                  <Route path="/dialer" element={standalone('sales.hub.view', <DialerPage />)} />
+
                   {/* Role dashboards: the control centre for each role, no module sidebar. */}
                   <Route element={<DashboardShell />}>
                     <Route path="/dashboard" element={<DashboardHome />} />
@@ -99,6 +116,7 @@ export default function App() {
                     <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/my/pf" element={<Suspense fallback={<PageSkeleton />}><MyPf /></Suspense>} />
 
                     <Route path="/hr" element={<HrSection />}>
                       <Route index element={guard('hr-overview', <HrDashboard />)} />
@@ -114,6 +132,7 @@ export default function App() {
                       <Route path={relative('hr-performance', '/hr')} element={guard('hr-performance', <Performance />)} />
                       <Route path={relative('hr-payroll', '/hr')} element={guard('hr-payroll', <Payroll />)} />
                       <Route path={relative('hr-payslips', '/hr')} element={guard('hr-payslips', <Payslips />)} />
+                      <Route path={relative('hr-pf', '/hr')} element={guard('hr-pf', <PfManagement />)} />
                       <Route path={relative('hr-sales-incentives', '/hr')} element={guard('hr-sales-incentives', <HrSalesIncentives />)} />
                       <Route path={relative('hr-incentive-settings', '/hr')} element={guard('hr-incentive-settings', <IncentiveSettings />)} />
                       <Route path={relative('hr-advances', '/hr')} element={guard('hr-advances', <Advances />)} />
@@ -139,6 +158,10 @@ export default function App() {
 
                     {/* Legal Module */}
                     <Route path="/legal" element={guard('legal-matters', <LegalDashboard />)} />
+
+                    {/* Client work lifecycle: the dashboard widget and queues open here */}
+                    <Route path="/client-work" element={guard('client-work', <ClientWorkPage />)} />
+                    <Route path="/client-work/:id" element={guard('client-work', <ClientWorkWorkspace />)} />
 
                     {placeholderRoutes.map((item) => (
                       <Route key={item.id} path={item.path} element={guard(item.id, <ModulePage id={item.id} />)} />

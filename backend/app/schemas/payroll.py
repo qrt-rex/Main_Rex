@@ -7,6 +7,7 @@ Days = Field(default=30, ge=1, le=31)
 
 class EarningsBreakdown(BaseModel):
     basic: float = 0.0
+    da: float = 0.0
     hra: float = 0.0
     conveyance: float = 0.0
     special_allowance: float = 0.0

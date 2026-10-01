@@ -1,6 +1,7 @@
 import { CalendarClock, PhoneCall, Sparkles, Target, Trophy } from 'lucide-react';
 import { useApi } from '../lib/useApi';
 import { number, todayISO } from '../lib/format';
+import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { ErrorState } from '../components/common/ErrorState';
 import { Skeleton } from '../components/common/Skeleton';
@@ -11,6 +12,7 @@ import {
   AttendanceBoardCard, DayCard, FlyersPostsCard, LeadsCard, ManageLink,
   SalesInfoCard, SchemesCard, TeamProgressCard,
 } from './SalesWidgets';
+import { openDialer } from './openDialer';
 import { useLive } from './useLive';
 
 /** Admin / Super Admin dashboard: every sales employee's progress and the live attendance board. */
@@ -21,7 +23,7 @@ export function SalesTeamOverview() {
   return (
     <>
       <SectionTitle action={s.data.can_manage ? <ManageLink /> : undefined}>Sales team</SectionTitle>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <TeamProgressCard rows={s.data.progress} description="Every sales employee, today" />
         <AttendanceBoardCard rows={s.data.attendance} />
       </div>
@@ -45,7 +47,18 @@ export function SalesToday() {
 
   return (
     <>
-      <SectionTitle action={d.can_manage ? <ManageLink /> : undefined}>Today's sales overview</SectionTitle>
+      <SectionTitle
+        action={
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => openDialer()} title="Opens the dialer in a new tab">
+              <PhoneCall size={14} /> Dialer
+            </Button>
+            {d.can_manage && <ManageLink />}
+          </div>
+        }
+      >
+        Today's sales overview
+      </SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <DayCard session={d.session} onChange={s.reload} />
         <StatCard icon={Target} label="Leads to call" value={number(open.length)} hint={`${d.leads.length} assigned to you`} />
@@ -67,13 +80,18 @@ export function SalesToday() {
       <SectionTitle>Leads & Team activity</SectionTitle>
       <TwoColumn
         main={<>
-          <LeadsCard leads={d.leads} onChanged={s.reload} />
+          <LeadsCard
+            leads={d.leads}
+            onChanged={s.reload}
+            onOpenDialer={(lead) => openDialer(lead?.id)}
+          />
           <TeamProgressCard rows={d.progress} description="Every sales employee, today" actions={<Trophy size={15} className="text-warning" />} />
         </>}
         side={<>
           <AttendanceBoardCard rows={d.attendance} />
         </>}
       />
+
     </>
   );
 }

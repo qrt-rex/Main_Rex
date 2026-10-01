@@ -51,6 +51,12 @@ async def seed_database():
     await ensure_initial_records()
     print("[OK] Seeded Legal Records (31 records).")
 
+    # 1d. PF settings and the starting PF rules (first run only), and PF permissions for roles saved before PF existed
+    from app.services.pf_service import ensure_defaults as ensure_pf_defaults
+    from app.services.rbac_service import migrate_new_permissions
+    await ensure_pf_defaults()
+    await migrate_new_permissions()
+
     # 2. Sample Employees (Only if SEED_DUMMY_DATA is True)
     emp_col = get_collection("employees")
     if settings.SEED_DUMMY_DATA and await emp_col.count_documents({}) == 0:

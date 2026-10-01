@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import {
-  Banknote, CalendarCheck, CalendarClock, FileSpreadsheet, FileText, Megaphone, Scale, ShieldCheck, UserPlus, UserRoundPlus, Users, UsersRound,
+  Banknote, CalendarCheck, CalendarClock, FileSpreadsheet, FileText, Megaphone, Radio, Scale, ShieldCheck, UserPlus, UserRoundPlus, Users, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { money, number } from '../lib/format';
@@ -10,6 +10,7 @@ import { HBarChart } from '../components/charts/Charts';
 import { ActivityTable, ModuleEntities, ProgressCard, SectionTitle, StatGrid, TaskPanel, TwoColumn } from './components';
 import { DashboardIntro } from './DashboardShell';
 import { SalesTeamOverview } from '../sales/SalesToday';
+import { ClientWorkWidget } from '../clientwork/ClientWorkWidget';
 import type { WorkspaceSummary } from './api';
 
 /** Organisation-wide control centre: people, money, pipeline, access and activity. */
@@ -35,6 +36,15 @@ export function AdminDashboard({ summary }: { summary: WorkspaceSummary }) {
       <DashboardIntro
         subtitle="Organisation overview across people, payroll, pipeline and access."
         actions={<>
+          <a
+            href="/ivr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-[#FACC15] px-3.5 text-sm font-bold text-neutral-950 shadow-[var(--shadow-card)] hover:bg-amber-400 active:bg-amber-500 transition-colors"
+            title="Open IVR Voice Blasts in a new window"
+          >
+            <Radio size={15} className="stroke-[2.4]" aria-hidden="true" /> IVR
+          </a>
           {can('users.manage') && (
             <Link to="/admin/users?new=1" className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3.5 text-sm font-medium text-text shadow-[var(--shadow-card)] hover:bg-surface-secondary">
               <UserRoundPlus size={15} aria-hidden="true" /> Create member
@@ -62,6 +72,12 @@ export function AdminDashboard({ summary }: { summary: WorkspaceSummary }) {
           )}
         </>}
       />
+
+      {can('clientwork.view') && (
+        <div className="mb-6">
+          <ClientWorkWidget />
+        </div>
+      )}
 
       <StatGrid>
         {workforce && (

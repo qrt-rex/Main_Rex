@@ -129,8 +129,8 @@ export function HrDashboard() {
         <StatCard icon={UserPlus} label="Recruitment pool" to={can('hr.recruitment.view') ? '/hr/recruitment' : undefined} value={number(m.total_candidates)} hint={`${m.pending_onboarding} pending onboarding`} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
           <Card>
             <CardHeader title="Recruitment pipeline" description={`${m.hr_name}'s candidates: ${m.my_total_candidates} total · ${m.my_onboarding} selected or joined · ${m.my_pending_onboarding} awaiting onboarding`} />
             <div className="p-4"><HBarChart data={pipeline} valueLabel="Candidates" slot={2} emptyText="No candidates in the pipeline yet" /></div>
@@ -154,11 +154,11 @@ export function HrDashboard() {
             )}
           </Card>
         </div>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {actions.length > 1 && (
             <Card>
               <CardHeader title="Quick actions" />
-              <div className="grid gap-2 p-3">
+              <div className="grid grid-cols-1 gap-2 p-3">
                 {actions.map((a) => (
                   <Link key={a.to} to={a.to} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm font-medium text-text hover:border-border-strong hover:bg-surface-secondary">
                     <a.icon size={15} className="text-text-muted" aria-hidden="true" /> {a.label}

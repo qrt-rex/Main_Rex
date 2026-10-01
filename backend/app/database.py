@@ -29,6 +29,25 @@ KNOWN_COLLECTIONS = [
     "billing_payments", "billing_branches", "billing_settings", "billing_counters",
     "legal_records", "automations", "automation_runs", "client_documents", "client_document_files",
     "sales_leads", "sales_calls", "sales_schemes", "sales_materials", "sales_material_files", "sales_day_sessions",
+    # Client work lifecycle (see services/client_work_service.py)
+    "client_work", "client_tasks", "client_work_status_history", "client_work_activity", "client_work_hold_history",
+    "client_work_documents", "client_work_files", "client_work_comments", "client_work_notifications",
+    "client_work_time_logs", "client_work_active",
+    # IT Command Center (see services/it_service.py)
+    "it_incidents", "it_tasks", "emergency_access", "system_alerts",
+    "deployment_history", "backup_jobs", "configuration_changes", "session_tracking",
+    "pf_settings", "pf_rules", "employee_pf_details", "payroll_pf_transactions", "pf_audit_logs", "pf_events",
+]
+
+# Constraints the document API can't express: (index name, collection, SQL after "ON <table>").
+# Unique expression indexes are the database-level backstop for checks the services also make.
+EXTRA_INDEXES = [
+    ("uq_pf_details_employee", "employee_pf_details", "((data->>'employee_id'))", True),
+    ("uq_pf_details_uan", "employee_pf_details", "((data->>'uan')) WHERE coalesce(data->>'uan', '') <> ''", True),
+    ("uq_pf_tx_payroll", "payroll_pf_transactions", "((data->>'payroll_id'))", True),
+    ("idx_pf_tx_employee_period", "payroll_pf_transactions", "((data->>'employee_id'), (data->>'calculation_date'))", False),
+    ("idx_pf_rules_from", "pf_rules", "((data->>'effective_from'))", False),
+    ("idx_pf_audit_employee", "pf_audit_logs", "((data->>'employee_id'), (data->>'created_at'))", False),
 ]
 
 
@@ -311,7 +330,9 @@ class PostgresDocumentAdapter:
         counter = [0]
         where = build_where(filter, params, counter)
         async with self.engine.begin() as conn:
-            result = await conn.execute(text(f"SELECT id, data FROM {self.table} WHERE {where} LIMIT 1"), params)
+            # FOR UPDATE: two writers can't both read the same row and overwrite each other, so a
+            # versioned filter ({"version": n}) works as a real compare-and-swap.
+            result = await conn.execute(text(f"SELECT id, data FROM {self.table} WHERE {where} LIMIT 1 FOR UPDATE"), params)
             row = result.fetchone()
 
             if row:
@@ -421,6 +442,11 @@ class DatabaseManager:
                         f"CREATE INDEX IF NOT EXISTS idx_col_{valid_name}_data ON {tbl} USING gin(data)"
                     ))
                     _ensured_tables.add(name)
+                for idx_name, coll, expr, unique in EXTRA_INDEXES:
+                    tbl = f"{settings.DB_SCHEMA}.col_{_validate_table_name(coll)}"
+                    await conn.execute(text(
+                        f"CREATE {'UNIQUE ' if unique else ''}INDEX IF NOT EXISTS {idx_name} ON {tbl} {expr}"
+                    ))
             logger.info("Successfully connected to PostgreSQL.")
         except Exception as e:
             # Postgres is the only supported store: fail fast rather than run on a local file.

@@ -75,6 +75,42 @@ class PDFService:
         </table>
         <p style="font-size: 10px; color: #64748b; margin: -8px 0 15px;">{escape(str(inc.get('note', '')))}</p>"""
 
+        # PF as payroll calculated it (copied onto the payslip at finalize). Older payslips have no copy and stay as they were.
+        pf = raw_slip.get("pf") if isinstance(raw_slip.get("pf"), dict) else None
+        pf_label = "Provident Fund (PF - 12%)"
+        pf_block = ""
+        if pf:
+            if pf.get("status") == "CALCULATED":
+                pf_label = f"Employee PF ({num(pf.get('employee_pf_percent')):g}% of PF wage)"
+                limit = {"minimum": "raised to the minimum PF wage", "maximum": "capped at the maximum PF wage"}.get(pf.get("wage_limited_by") or "", "")
+                lines = [
+                    ("PF Wage", f"{fmt(pf.get('pf_wage'))}" + (f" <small style='color:#64748b'>({limit})</small>" if limit else "")),
+                    (f"Employee PF ({num(pf.get('employee_pf_percent')):g}%)", fmt(pf.get("employee_pf"))),
+                    (f"Employer PF ({num(pf.get('employer_pf_percent')):g}%)", fmt(pf.get("employer_pf"))),
+                    (f"EPS ({num(pf.get('eps_percent')):g}%)", fmt(pf.get("eps"))),
+                    ("Employer EPF", fmt(pf.get("employer_epf"))),
+                ]
+                basis = {"BASIC": "Basic", "BASIC_DA": "Basic + DA", "STATUTORY": "Statutory PF wage"}.get(
+                    str(pf.get("calculation_basis") or "BASIC"), "Basic")
+                rule_note = (f"PF wage = MIN(MAX({basis} {fmt(pf.get('pf_base'))}, {fmt(pf.get('minimum_pf_wage'))}), "
+                             f"{fmt(pf.get('maximum_pf_wage'))}) · {escape(str(pf.get('rule_name', '')))}")
+            else:
+                pf_label = "Provident Fund (PF)"
+                lines = [("PF status", escape(str(pf.get("reason") or pf.get("status") or "")))]
+                rule_note = ""
+            uan = escape(str(pf.get("uan") or "Not on record"))
+            rows_html = "".join(f"<tr><td>{k}</td><td class=\"amt\">{v}</td></tr>" for k, v in lines)
+            pf_block = f"""
+        <div class="section-header">PROVIDENT FUND (UAN: {uan})</div>
+        <table class="calc-table">
+            <tbody>
+                {rows_html}
+                <tr class="total-row"><td>TOTAL EMPLOYER CONTRIBUTION</td><td class="amt">{fmt(pf.get('employer_pf', 0))}</td></tr>
+                <tr><td>Cost to company (gross + employer contribution)</td><td class="amt">{fmt(raw_slip.get('ctc') or num(raw_slip.get('gross_salary')) + num(pf.get('employer_pf')))}</td></tr>
+            </tbody>
+        </table>
+        <p style="font-size: 10px; color: #64748b; margin: -8px 0 15px;">{rule_note}</p>"""
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -202,6 +238,7 @@ class PDFService:
                         </thead>
                         <tbody>
                             <tr><td>Basic Salary</td><td class="amt">{fmt(earnings.get('basic', 0))}</td></tr>
+                            {f"<tr><td>Dearness Allowance (DA)</td><td class='amt'>{fmt(earnings.get('da', 0))}</td></tr>" if num(earnings.get('da')) else ""}
                             <tr><td>House Rent Allowance (HRA)</td><td class="amt">{fmt(earnings.get('hra', 0))}</td></tr>
                             <tr><td>Conveyance Allowance</td><td class="amt">{fmt(earnings.get('conveyance', 0))}</td></tr>
                             <tr><td>Medical Allowance</td><td class="amt">{fmt(earnings.get('medical', 0))}</td></tr>
@@ -226,7 +263,7 @@ class PDFService:
                             <tr><th>Particulars</th><th style="text-align: right;">Amount (₹)</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>Provident Fund (PF - 12%)</td><td class="amt">{fmt(deductions.get('pf', 0))}</td></tr>
+                            <tr><td>{pf_label}</td><td class="amt">{fmt(deductions.get('pf', 0))}</td></tr>
                             <tr><td>Employee State Insurance (ESI)</td><td class="amt">{fmt(deductions.get('esi', 0))}</td></tr>
                             <tr><td>Professional Tax (PT)</td><td class="amt">{fmt(deductions.get('professional_tax', deductions.get('pt', 200)))}</td></tr>
                             <tr><td>Income Tax / TDS</td><td class="amt">{fmt(deductions.get('tds', 0))}</td></tr>
@@ -245,7 +282,7 @@ class PDFService:
                 </td>
             </tr>
         </table>
-{sales_block}
+{sales_block}{pf_block}
         <!-- Net Payable Summary Banner -->
         <div class="net-salary-banner">
             <div>

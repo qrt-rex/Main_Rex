@@ -23,6 +23,7 @@ from app.database import db_manager, get_collection
 from app.services import inbox
 from app.services.auth_service import get_current_admin
 from app.services import rbac_service as rbac
+from app.services.leave_service import can_decide
 
 logger = logging.getLogger("rexera.router.workspace")
 router = APIRouter(prefix="/api/workspace", tags=["Role Dashboards"])

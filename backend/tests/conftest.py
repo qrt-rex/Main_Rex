@@ -1,0 +1,283 @@
+"""
+Two kinds of fixtures:
+
+- `store` / `client` / `auth` / `user`: the real app on an in-memory document store (fast, no database).
+- `api`: the real app against a real PostgreSQL in a throwaway schema (dropped afterwards). Point
+  TEST_POSTGRES_URI at a database you can create schemas in, e.g.
+
+      TEST_POSTGRES_URI=postgresql+asyncpg://postgres:postgres@localhost:5432/rexera_hr pytest
+
+  Without it those API tests are skipped (the PF engine tests still run).
+"""
+import os
+import asyncio
+import copy
+import re
+import uuid
+import pytest
+from datetime import datetime
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.config import settings
+from app.database import db_manager
+import app.database as database
+from app.utils.security import hash_password
+from app.utils.tokens import create_access_token
+
+
+class InMemoryCursor:
+    def __init__(self, docs):
+        self.docs = list(docs)
+
+    def sort(self, key, direction=1):
+        def _sort_key(d):
+            return d.get(key, "")
+        self.docs.sort(key=_sort_key, reverse=(direction == -1))
+        return self
+
+    def skip(self, n):
+        self.docs = self.docs[n:]
+        return self
+
+    def limit(self, n):
+        self.docs = self.docs[:n]
+        return self
+
+    async def to_list(self, length=None):
+        if length is not None:
+            return copy.deepcopy(self.docs[:length])
+        return copy.deepcopy(self.docs)
+
+    def __iter__(self):
+        return iter(self.docs)
+
+
+class InMemoryCollection:
+    def __init__(self, name, store):
+        self.name = name
+        self.store = store
+
+    def _get_table(self):
+        if self.name not in self.store:
+            self.store[self.name] = {}
+        return self.store[self.name]
+
+    def _matches(self, doc, query):
+        if not query:
+            return True
+        for k, v in query.items():
+            if k == "$or":
+                if not any(self._matches(doc, q) for q in v):
+                    return False
+                continue
+            if k == "$and":
+                if not all(self._matches(doc, q) for q in v):
+                    return False
+                continue
+            
+            doc_val = doc.get(k)
+            if isinstance(v, dict):
+                for op, opval in v.items():
+                    if op == "$in":
+                        if doc_val not in opval:
+                            return False
+                    elif op == "$ne":
+                        if doc_val == opval:
+                            return False
+                    elif op == "$gte":
+                        if doc_val is None or doc_val < opval:
+                            return False
+                    elif op == "$lte":
+                        if doc_val is None or doc_val > opval:
+                            return False
+                    elif op == "$gt":
+                        if doc_val is None or doc_val <= opval:
+                            return False
+                    elif op == "$lt":
+                        if doc_val is None or doc_val >= opval:
+                            return False
+                    elif op == "$regex":
+                        flags = re.IGNORECASE if v.get("$options") == "i" else 0
+                        if not doc_val or not re.search(opval, str(doc_val), flags):
+                            return False
+            else:
+                if doc_val != v:
+                    return False
+        return True
+
+    async def find_one(self, filter=None, projection=None):
+        table = self._get_table()
+        for doc in table.values():
+            if self._matches(doc, filter or {}):
+                return copy.deepcopy(doc)
+        return None
+
+    def find(self, filter=None, projection=None):
+        table = self._get_table()
+        matches = [copy.deepcopy(doc) for doc in table.values() if self._matches(doc, filter or {})]
+        return InMemoryCursor(matches)
+
+    async def insert_one(self, document):
+        table = self._get_table()
+        doc = copy.deepcopy(document)
+        if "_id" not in doc:
+            doc["_id"] = str(uuid.uuid4())
+        doc_id = str(doc["_id"])
+        doc["id"] = doc_id
+        table[doc_id] = doc
+        class Res:
+            inserted_id = doc_id
+        return Res()
+
+    async def update_one(self, filter, update):
+        table = self._get_table()
+        for doc_id, doc in table.items():
+            if self._matches(doc, filter or {}):
+                if "$set" in update:
+                    for sk, sv in update["$set"].items():
+                        doc[sk] = sv
+                if "$inc" in update:
+                    for ik, iv in update["$inc"].items():
+                        doc[ik] = doc.get(ik, 0) + iv
+                return database.UpdateResult(1, 1)
+        return database.UpdateResult(0, 0)
+
+    async def delete_one(self, filter):
+        table = self._get_table()
+        for doc_id, doc in table.items():
+            if self._matches(doc, filter or {}):
+                del table[doc_id]
+                return database.DeleteResult(1)
+        return database.DeleteResult(0)
+
+    async def count_documents(self, filter=None):
+        table = self._get_table()
+        return sum(1 for doc in table.values() if self._matches(doc, filter or {}))
+
+
+@pytest.fixture
+def store(monkeypatch):
+    data_store = {}
+    monkeypatch.setattr(database, "get_collection", lambda name: InMemoryCollection(name, data_store))
+    monkeypatch.setattr(db_manager, "get_collection", lambda name: InMemoryCollection(name, data_store))
+    return data_store
+
+
+@pytest.fixture
+def client(store):
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth(store):
+    superadmin_id = "superadmin-1"
+    store["admins"] = {
+        superadmin_id: {
+            "_id": superadmin_id,
+            "id": superadmin_id,
+            "username": "superadmin",
+            "email": settings.DEFAULT_ADMIN_EMAIL.lower(),
+            "password_hash": hash_password(settings.DEFAULT_ADMIN_PASSWORD),
+            "role": "superadmin",
+            "is_active": True,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+    }
+    token = create_access_token({
+        "sub": superadmin_id,
+        "email": settings.DEFAULT_ADMIN_EMAIL.lower(),
+        "username": "superadmin",
+        "role": "superadmin",
+        "scope": "admin_access",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
+def user(client, auth_headers, store, email, role):
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "_id": user_id,
+        "id": user_id,
+        "username": email.split("@")[0],
+        "email": email.strip().lower(),
+        "password_hash": hash_password("Password123!"),
+        "role": role,
+        "is_active": True,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    if "admins" not in store:
+        store["admins"] = {}
+    store["admins"][user_id] = user_doc
+
+    token = create_access_token({
+        "sub": user_id,
+        "email": email.strip().lower(),
+        "username": email.split("@")[0],
+        "role": role,
+        "scope": "admin_access",
+    })
+    headers = {"Authorization": f"Bearer {token}"}
+    return user_doc, headers
+
+
+TEST_URI = os.environ.get("TEST_POSTGRES_URI", "")
+
+
+class Api:
+    """A TestClient plus helpers to sign in as any account and to run database coroutines on the app's loop."""
+
+    def __init__(self, client):
+        self.client = client
+
+    def run(self, fn, *args):
+        return self.client.portal.call(fn, *args)
+
+    def token_for(self, email: str) -> str:
+        from app.database import get_collection
+        from app.utils.tokens import create_access_token
+
+        async def find():
+            return await get_collection("admins").find_one({"email": email.lower()})
+        admin = self.run(find)
+        assert admin, f"no account {email}"
+        return create_access_token({"sub": str(admin["_id"]), "email": admin["email"], "scope": "admin_access"})
+
+    def as_(self, email: str):
+        token = self.token_for(email)
+        client = self.client
+
+        class _As:
+            def __getattr__(self, method):
+                def call(url, **kw):
+                    headers = {**kw.pop("headers", {}), "Authorization": f"Bearer {token}"}
+                    return getattr(client, method)(url, headers=headers, **kw)
+                return call
+        return _As()
+
+
+@pytest.fixture(scope="session")
+def api():
+    if not TEST_URI:
+        pytest.skip("Set TEST_POSTGRES_URI to run the API tests against PostgreSQL.")
+    from app.config import settings
+    schema = f"pf_test_{uuid.uuid4().hex[:10]}"
+    settings.POSTGRES_URI = TEST_URI
+    settings.DB_SCHEMA = schema
+    settings.APP_ENV = "test"
+    settings.EMAIL_DEV_MODE = True
+    settings.AUTOMATIONS_ENABLED = False
+    settings.SEED_DUMMY_DATA = False
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as client:
+        api = Api(client)
+        yield api
+
+        async def drop():
+            from sqlalchemy import text
+            from app.database import db_manager
+            async with db_manager.engine.begin() as conn:
+                await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+        api.run(drop)

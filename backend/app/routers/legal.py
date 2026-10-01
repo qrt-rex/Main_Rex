@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field
 
 from app.database import get_collection
 from app.services.auth_service import get_current_admin
-from app.services.rbac_service import ROLES, get_user_permissions, has_role, normalize_role
+from app.services.rbac_service import ROLES, get_user_permissions, has_role
 from app.services.email_service import EmailService
+from app.services import client_work_service
 
 router = APIRouter(prefix="/api/legal", tags=["Legal Compliance"])
 
@@ -494,14 +495,14 @@ def _matches(c: Dict[str, Any], search: str) -> bool:
 
 @router.get("/staff")
 async def list_staff(admin: Dict[str, Any] = Depends(get_current_admin)):
-    """Active users a client can be assigned to (any role; Admins listed first)."""
+    """Active Admin members a client can be assigned to."""
     await require_full_legal(admin)
     labels = {r["id"]: r["label"] for r in ROLES}
     docs = await get_collection("admins").find({}).to_list(1000)
     staff = [{"id": str(d["_id"]), "name": d.get("username") or d.get("email", ""), "email": d.get("email", ""),
-              "role": normalize_role(d.get("role")), "role_label": labels.get(normalize_role(d.get("role")), d.get("role", ""))}
-             for d in docs if d.get("is_active", True)]
-    return {"staff": sorted(staff, key=lambda s: (s["role"] != "admin", s["name"].lower()))}
+              "role": "admin", "role_label": labels["admin"]}
+             for d in docs if d.get("is_active", True) and has_role(d, "admin")]
+    return {"staff": sorted(staff, key=lambda s: s["name"].lower())}
 
 
 @router.get("/clients")
@@ -541,6 +542,12 @@ async def _client_doc(kind: str, item_id: str) -> Dict[str, Any]:
 
 class AssignRequest(BaseModel):
     user_id: Optional[str] = None  # None unassigns
+    # Optional work details: they shape the client work created for the member (see client_work_service).
+    priority: str = "MEDIUM"
+    work_type: str = ""
+    deadline: Optional[str] = None
+    required_action: str = ""
+    notes: str = ""
 
 
 @router.put("/clients/{kind}/{item_id}/assign")
@@ -554,8 +561,17 @@ async def assign_client(kind: str, item_id: str, req: AssignRequest, admin: Dict
             raise HTTPException(status_code=404, detail="That user doesn't exist or is disabled.")
         assigned = {"user_id": str(user["_id"]), "name": user.get("username") or user.get("email", ""), "email": user.get("email", ""),
                     "assigned_at": datetime.utcnow().isoformat(), "assigned_by": admin.get("email", "")}
+        # Validate the work details first, so a bad deadline doesn't leave a half-made assignment.
+        work, outcome = await client_work_service.assign_client(kind, item_id, req.user_id, client_work_service.actor_of(admin), priority=req.priority,
+                                                                work_type=req.work_type, deadline=req.deadline, required_action=req.required_action, notes=req.notes)
+        if outcome == "unchanged" and (doc.get("assigned_to") or {}).get("user_id") == req.user_id:
+            assigned = doc["assigned_to"]  # same member again: keep the original assignment time
+    else:
+        await client_work_service.unassign_client(kind, item_id, client_work_service.actor_of(admin))
     await get_collection(CLIENT_KINDS[kind]).update_one({"_id": doc["_id"]}, {"$set": {"assigned_to": assigned, "updated_at": datetime.utcnow().isoformat()}})
     client = _client_view(kind, {**doc, "assigned_to": assigned})
+    if assigned:
+        client["work_id"] = str(work["_id"])
     if assigned and assigned["email"] and (doc.get("assigned_to") or {}).get("user_id") != assigned["user_id"]:
         services = ", ".join(client["services"] or client["documents"]) or "—"
         body = (f"<p>Dear {escape(assigned['name'])},</p><p>The client <b>{escape(client['company_name'])}</b> "

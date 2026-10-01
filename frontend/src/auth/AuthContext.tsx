@@ -49,6 +49,7 @@ const WARN_BEFORE_MS = 60_000;
 function clearSessionCaches() {
   try {
     Object.keys(sessionStorage).filter((k) => k.startsWith('rex-crm')).forEach((k) => sessionStorage.removeItem(k));
+    localStorage.removeItem('rex-crm-ivr-session'); // the IVR dialer session belongs to this CRM sign-in
   } catch {
     // storage unavailable
   }
