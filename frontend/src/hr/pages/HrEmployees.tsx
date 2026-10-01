@@ -7,6 +7,7 @@ import { date, money } from '../../lib/format';
 import { bulkEmployees, deleteEmployee, DEPARTMENTS, EMPLOYEE_STATUSES, getEmployee, listEmployees, type Employee } from '../api';
 import { useEmployeeOptions } from '../HrSection';
 import { DetailList, ExportMenu, ImportButton, Section, Toolbar } from '../components';
+import { EmployeePfCard } from '../pf/components';
 import { Avatar } from '../../components/common/Avatar';
 import { StatusBadge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
@@ -81,14 +82,19 @@ function EmployeeDrawer({ id, onClose }: { id: string | null; onClose: () => voi
           </Section>
           <Section title="Salary structure (monthly)">
             <dl className="divide-y divide-border rounded-md border border-border text-sm">
-              {([['Basic', e.base_salary], ['HRA', e.hra], ['Conveyance', e.conveyance_allowance], ['Special allowance', e.special_allowance], ['Professional tax', e.professional_tax]] as const).map(([k, v]) => (
+              {([['Basic', e.base_salary], ['DA', e.da ?? 0], ['HRA', e.hra], ['Conveyance', e.conveyance_allowance], ['Special allowance', e.special_allowance], ['Professional tax', e.professional_tax]] as const).map(([k, v]) => (
                 <div key={k} className="flex justify-between px-3 py-2"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{money(v)}</dd></div>
               ))}
-              <div className="flex justify-between px-3 py-2"><dt className="text-text-muted">Provident fund</dt><dd className="text-text">{e.pf_opted ? '12% of basic' : 'Not opted'}</dd></div>
+              <div className="flex justify-between px-3 py-2"><dt className="text-text-muted">Provident fund</dt><dd className="text-text">{can('hr.pf.view') ? 'See PF details below' : e.pf_opted ? 'Applicable' : 'Not applicable'}</dd></div>
               <div className="flex justify-between bg-surface-secondary px-3 py-2 font-medium"><dt className="text-text">Gross salary</dt><dd className="tabular-nums text-text">{money(e.gross_salary)}</dd></div>
               <div className="flex justify-between bg-surface-secondary px-3 py-2 font-medium"><dt className="text-text">Estimated net</dt><dd className="tabular-nums text-success">{money(e.estimated_net_salary)}</dd></div>
             </dl>
           </Section>
+          {can('hr.pf.view') && (
+            <Section title="PF details">
+              <EmployeePfCard employeeId={e.id} compact />
+            </Section>
+          )}
           <Section title="Banking">
             <DetailList items={[['Bank', e.bank_name], ['Account number', <span className="font-mono">{e.account_no}</span>], ['IFSC', <span className="font-mono">{e.ifsc_code}</span>]]} />
             {!can('hr.employees.bank') && <p className="mt-2 text-xs text-text-muted">Account number is masked for your role.</p>}

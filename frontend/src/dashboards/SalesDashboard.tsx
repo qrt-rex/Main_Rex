@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Briefcase, CalendarDays, Clock, FilePlus2, FolderKanban, ListChecks,
-  Megaphone, Plus, TriangleAlert, Users, Wallet,
+  Megaphone, PiggyBank, Plus, TriangleAlert, Users, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { date, money, number } from '../lib/format';
@@ -108,6 +108,7 @@ export function SalesDashboard({ summary }: { summary: WorkspaceSummary }) {
         <StatCard icon={ListChecks} label="Your assigned tasks" value={number(me.tasks.length)} hint="Personal work queue" />
         <StatCard icon={CalendarDays} tone="warning" label="Leave requests" value={number(openLeave)} hint={`${me.leaves.length} on record`} to={can('hr.leave.view') ? '/hr/leave' : undefined} />
         {me.payslip && <StatCard icon={Wallet} tone="info" label="Latest payslip" value={money(me.payslip.net_salary)} hint={me.payslip.period || 'Most recent'} to={can('hr.payroll.view') ? '/hr/payroll' : undefined} />}
+        {me.employee && <StatCard icon={PiggyBank} tone="success" label="Provident fund" value="My PF" hint="UAN, PF wage and contributions" to="/my/pf" />}
         <PayslipPreview id={slipOpen} onClose={() => setSlipOpen(null)} />
         <StatCard icon={Megaphone} label="Company announcements" value={number(updates.length)} hint="Active updates" to={can('hr.broadcasts.view') ? '/hr/broadcasts' : undefined} />
       </StatGrid>

@@ -47,6 +47,8 @@ export interface Employee {
   /** Last working day; payroll leaves the days after it unpaid. */
   date_of_exit?: string;
   base_salary: number;
+  /** Dearness allowance (an earning; part of the PF wage when a PF rule's basis is Basic + DA). */
+  da?: number;
   hra: number;
   conveyance_allowance: number;
   special_allowance: number;
@@ -324,6 +326,10 @@ export interface PayrollRecord {
   attendance?: Record<string, number>;
   earnings?: Record<string, number>;
   deductions?: Record<string, number>;
+  /** PF the backend engine calculated for this payroll (absent on payroll run before PF management). */
+  pf?: { status: string; reason?: string; pf_wage?: number; wage_limited_by?: string | null; rule_name?: string | null; employee_pf?: number; employer_pf?: number };
+  employer_contribution?: number;
+  ctc?: number;
 }
 export interface PayrollMetrics { total_employees: number; processed_count: number; pending_count: number; total_gross_payroll: number; total_deductions: number; total_net_payroll: number }
 export const listPayroll = (p: { month: string; year: number; department?: string; status?: string }) => api.get<PayrollRecord[]>('/api/payroll', p);

@@ -6,6 +6,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { ApiError } from '../../lib/api';
 import { money, todayISO } from '../../lib/format';
 import { isStrongPassword, PASSWORD_RULES } from '../../lib/password';
+import { useApi, useDebounced } from '../../lib/useApi';
+import { calculatePf } from '../pf/api';
 import { parseSpreadsheet, downloadTemplate } from '../../lib/spreadsheet';
 import {
   BRANCHES, bulkEmployees, bulkInterns, createEmployee, createIntern, DEPARTMENTS, DESIGNATIONS, getEmployee, updateEmployee,
@@ -15,7 +17,7 @@ import { useEmployeeOptions } from '../HrSection';
 import { Button } from '../../components/common/Button';
 import { Card, CardHeader } from '../../components/common/Card';
 import { useConfirm } from '../../components/common/ConfirmDialog';
-import { Checkbox, Input, Select } from '../../components/common/Input';
+import { Input, Select } from '../../components/common/Input';
 import { ErrorState } from '../../components/common/ErrorState';
 import { PageSkeleton } from '../../components/common/Skeleton';
 import { useToast } from '../../components/common/ToastContext';
@@ -49,7 +51,7 @@ const blank = (): Values => ({
   code: '', full_name: '', email: '', mobile_number: '', department: 'SALES', department_other: '', role: '', manager: '',
   // employee
   gender: 'MALE', branch: 'AMD', date_of_joining: todayISO(), date_of_exit: '', employee_status: 'Active', password: '',
-  base_salary: '50000', hra: '20000', conveyance_allowance: '2000', special_allowance: '5000', professional_tax: '200', pf_opted: true,
+  base_salary: '50000', da: '0', hra: '20000', conveyance_allowance: '2000', special_allowance: '5000', professional_tax: '200', pf_opted: true,
   // intern
   intern_gender: 'Other', date_of_birth: '', college_university: '', degree: '', branch_specialization: '', current_semester: '', roll_number: '',
   internship_type: 'Full-time', start_date: todayISO(), end_date: addMonths(todayISO(), 3), duration_months: '3', monthly_stipend: '15000',
@@ -65,7 +67,7 @@ function fromEmployee(e: Employee): Values {
     department: known ? e.department : OTHER, department_other: known ? '' : e.department,
     role: e.designation, manager: e.reporting_manager ?? '', gender: e.gender || 'MALE', branch: e.branch || 'AMD',
     date_of_joining: e.date_of_joining, date_of_exit: e.date_of_exit ?? '', employee_status: e.employee_status,
-    base_salary: String(e.base_salary), hra: String(e.hra), conveyance_allowance: String(e.conveyance_allowance),
+    base_salary: String(e.base_salary), da: String(e.da ?? 0), hra: String(e.hra), conveyance_allowance: String(e.conveyance_allowance),
     special_allowance: String(e.special_allowance), professional_tax: String(e.professional_tax), pf_opted: e.pf_opted,
     bank_name: unplaceholder(e.bank_name), account_no: unplaceholder(e.account_no), ifsc_code: unplaceholder(e.ifsc_code),
   };
@@ -116,7 +118,7 @@ function toPayload(kind: Kind, v: Values) {
       employee_code: String(v.code).trim(), full_name: String(v.full_name).trim(), email: String(v.email).trim(),
       mobile_number: String(v.mobile_number).trim(), department: dept, designation: String(v.role).trim(),
       gender: v.gender, branch: v.branch, reporting_manager: String(v.manager).trim(), date_of_joining: v.date_of_joining,
-      date_of_exit: v.date_of_exit, base_salary: n('base_salary'), hra: n('hra'), conveyance_allowance: n('conveyance_allowance'),
+      date_of_exit: v.date_of_exit, base_salary: n('base_salary'), da: n('da'), hra: n('hra'), conveyance_allowance: n('conveyance_allowance'),
       special_allowance: n('special_allowance'), professional_tax: n('professional_tax'), pf_opted: !!v.pf_opted,
       bank_name: String(v.bank_name).trim(), account_no: String(v.account_no).trim(),
       ifsc_code: String(v.ifsc_code).trim().toUpperCase(), employee_status: v.employee_status,
@@ -135,7 +137,7 @@ function toPayload(kind: Kind, v: Values) {
   };
 }
 
-function validate(kind: Kind, v: Values) {
+function validate(kind: Kind, v: Values, editing = false) {
   const e: Record<string, string> = {};
   if (String(v.full_name).trim().length < 2) e.full_name = 'Enter the full name.';
   if (!EMAIL_RE.test(String(v.email).trim())) e.email = 'Enter a valid email address.';
@@ -146,8 +148,9 @@ function validate(kind: Kind, v: Values) {
     if (!v.date_of_joining) e.date_of_joining = 'Choose the joining date.';
     if (v.date_of_exit && v.date_of_joining && v.date_of_exit < v.date_of_joining) e.date_of_exit = 'The exit date can\'t be before the joining date.';
     if (!(Number(v.base_salary) > 0)) e.base_salary = 'Enter the basic salary.';
-    if (v.password && !isStrongPassword(String(v.password))) e.password = 'The password doesn\'t meet every rule below.';
-    for (const k of ['hra', 'conveyance_allowance', 'special_allowance', 'professional_tax']) {
+    if (!editing && !v.password) e.password = 'Set a password for the employee\'s login.';
+    else if (v.password && !isStrongPassword(String(v.password))) e.password = 'The password doesn\'t meet every rule below.';
+    for (const k of ['da', 'hra', 'conveyance_allowance', 'special_allowance', 'professional_tax']) {
       if (Number(v[k]) < 0) e[k] = 'Amounts cannot be negative.';
     }
   } else {
@@ -210,12 +213,22 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
     if (errors[field]) setErrors((er) => ({ ...er, [field]: '' }));
   };
 
+  // PF comes from the backend PF engine (the rule in force today, and this employee's PF details when editing).
+  const canSeePf = can('hr.pf.view');
+  const pfBasic = useDebounced(Number(values.base_salary) || 0, 400);
+  const pfDa = useDebounced(Number(values.da) || 0, 400);
+  const pfCalc = useApi(() => calculatePf({ basic_salary: pfBasic, da: pfDa, employee_id: editing ? id : undefined }),
+    [pfBasic, pfDa, editing, id], kind === 'employee' && canSeePf && pfBasic > 0);
+  const pf = pfCalc.data && pfBasic > 0 ? pfCalc.data : null;
+
   const preview = useMemo(() => {
     const n = (k: string) => Number(values[k]) || 0;
-    const gross = n('base_salary') + n('hra') + n('conveyance_allowance') + n('special_allowance');
-    const pf = values.pf_opted ? Math.round(n('base_salary') * 0.12) : 0;
-    return { gross, pf, net: Math.max(0, gross - pf - n('professional_tax')) };
-  }, [values]);
+    const allowances = n('conveyance_allowance') + n('special_allowance');
+    const gross = n('base_salary') + n('da') + n('hra') + allowances;
+    const employeePf = pf?.employee_pf ?? 0;
+    const deductions = employeePf + n('professional_tax');
+    return { allowances, gross, deductions, net: Math.max(0, gross - deductions), ctc: gross + (pf?.employer_pf ?? 0) };
+  }, [values, pf]);
 
   const loadFile = async (file: File) => {
     try {
@@ -256,7 +269,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const found = validate(kind, values);
+    const found = validate(kind, values, editing);
     setErrors(found);
     const firstError = Object.keys(found).find((k) => found[k]);
     if (firstError) {
@@ -277,7 +290,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
         showToast(`${payload.full_name} updated`, 'success');
       } else if (kind === 'employee') {
         const res = await createEmployee(payload);
-        showToast(`${res.full_name} (${res.employee_code}) added${values.password ? ' with a login' : ''}`, 'success');
+        showToast(`${res.full_name} (${res.employee_code}) added with a login`, 'success');
       } else {
         const res = await createIntern(payload);
         showToast(`${res.full_name} (${res.intern_code}) enrolled`, 'success');
@@ -388,13 +401,15 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
 
           {kind === 'employee' && !editing && (
             <Card>
-              <CardHeader title="Login access" description="Optional. Set a password and this employee signs in with their email as an Employee / Sales Person. Leave blank to skip." />
+              <CardHeader title="Login access" description="The employee signs in with their email and this password, as an Employee / Sales Person." />
               <div className="space-y-3 p-4">
                 <div className="flex flex-col gap-1.5">
                   {/* Label outside the row so the toggle stays level with the box when an error shows under it. */}
-                  <label htmlFor="f-password" className="text-[13px] font-medium text-text-secondary">Password</label>
+                  <label htmlFor="f-password" className="text-[13px] font-medium text-text-secondary">
+                    Password<span className="ml-0.5 text-danger" aria-hidden="true">*</span>
+                  </label>
                   <div className="flex items-start gap-2">
-                    <Input type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={16}
+                    <Input type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={16} required
                       {...field('password')} className="flex-1" inputClassName="font-mono" />
                     <Button variant="secondary" size="icon" aria-label={showPassword ? 'Hide password' : 'Show password'}
                       aria-pressed={showPassword} onClick={() => setShowPassword((s) => !s)}>
@@ -444,6 +459,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
               <CardHeader title="Compensation (₹ per month)" />
               <div className="grid gap-4 p-4 sm:grid-cols-2">
                 <Input label="Basic salary" type="number" min={0} required {...field('base_salary')} />
+                <Input label="Dearness allowance (DA)" type="number" min={0} {...field('da')} />
                 <div className="flex items-end gap-2">
                   <Input label="HRA" type="number" min={0} {...field('hra')} className="flex-1" />
                   <Button variant="secondary" onClick={() => setValues((v) => ({ ...v, hra: String(Math.round((Number(v.base_salary) || 0) * 0.4)) }))}>40% of basic</Button>
@@ -451,7 +467,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
                 <Input label="Conveyance allowance" type="number" min={0} {...field('conveyance_allowance')} />
                 <Input label="Special allowance" type="number" min={0} {...field('special_allowance')} />
                 <Input label="Professional tax" type="number" min={0} {...field('professional_tax')} />
-                <Checkbox label="Deduct provident fund" description="12% of basic salary" checked={!!values.pf_opted} onChange={set('pf_opted')} className="self-end pb-1.5" />
+                <p className="self-end pb-1.5 text-xs text-text-muted">Provident fund is worked out from the PF rules (HR → PF management). Exemptions are recorded, with a reason, in the employee's PF details.</p>
               </div>
             </Card>
           )}
@@ -470,11 +486,28 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
           {kind === 'employee' && (
             <Card className="lg:sticky lg:top-20">
               <CardHeader title="Salary preview" description="Per month, before TDS and LOP" />
-              <dl className="divide-y divide-border text-sm">
-                <div className="flex justify-between px-4 py-2.5"><dt className="text-text-muted">Gross salary</dt><dd className="tabular-nums font-medium text-text">{money(preview.gross)}</dd></div>
-                <div className="flex justify-between px-4 py-2.5"><dt className="text-text-muted">PF deduction</dt><dd className="tabular-nums text-text">− {money(preview.pf)}</dd></div>
-                <div className="flex justify-between px-4 py-2.5"><dt className="text-text-muted">Professional tax</dt><dd className="tabular-nums text-text">− {money(values.professional_tax)}</dd></div>
-                <div className="flex justify-between bg-surface-secondary px-4 py-3"><dt className="font-medium text-text">Estimated take-home</dt><dd className="tabular-nums text-base font-semibold text-success">{money(preview.net)}</dd></div>
+              <dl className="text-sm">
+                {([
+                  ['Earnings', null],
+                  ['Basic salary', money(values.base_salary)],
+                  ...(Number(values.da) > 0 ? [['DA', money(values.da)]] : []),
+                  ['HRA', money(values.hra)], ['Allowances', money(preview.allowances)],
+                  ['Gross salary', <span key="g" className="font-medium">{money(preview.gross)}</span>],
+                  ['Statutory deductions', null],
+                  ['Employee PF', !canSeePf ? <span key="p" className="text-xs text-text-muted">Worked out at payroll</span> : pf ? `− ${money(pf.employee_pf, true)}` : '…'],
+                  ['Professional tax', `− ${money(values.professional_tax)}`],
+                  ['Employer contributions', null],
+                  ['Employer PF', pf ? money(pf.employer_pf, true) : '—'], ['EPS', pf ? money(pf.eps, true) : '—'], ['Employer EPF', pf ? money(pf.employer_epf, true) : '—'],
+                ] as [string, React.ReactNode][]).map(([k, v]) => v === null
+                  ? <dt key={k} className="border-t border-border bg-surface-secondary px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted first:border-0">{k}</dt>
+                  : <div key={k} className="flex justify-between px-4 py-1.5"><dt className="text-text-muted">{k}</dt><dd className="tabular-nums text-text">{v}</dd></div>)}
+                {pf && pf.status !== undefined && pf.status !== 'CALCULATED' && <p className="px-4 pb-1.5 text-xs text-warning">{pf.reason}</p>}
+                {pf && (pf.status === undefined || pf.status === 'CALCULATED') && (
+                  <p className="px-4 pb-1.5 text-xs text-text-muted">PF wage {money(pf.pf_wage)}{pf.wage_limited_by ? ` (basic ${pf.wage_limited_by === 'maximum' ? 'capped at the maximum' : 'raised to the minimum'})` : ''} · {pf.rule_name}</p>
+                )}
+                <div className="flex justify-between border-t border-border bg-surface-secondary px-4 py-2"><dt className="text-text-muted">Total employee deductions</dt><dd className="tabular-nums text-text">{money(preview.deductions, true)}</dd></div>
+                <div className="flex justify-between bg-surface-secondary px-4 py-2"><dt className="font-medium text-text">Estimated net salary</dt><dd className="tabular-nums text-base font-semibold text-success">{money(preview.net, true)}</dd></div>
+                <div className="flex justify-between bg-surface-secondary px-4 py-2"><dt className="text-text-muted">CTC (gross + employer PF)</dt><dd className="tabular-nums text-text">{money(preview.ctc, true)}</dd></div>
               </dl>
             </Card>
           )}

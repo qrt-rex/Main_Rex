@@ -162,3 +162,43 @@ async def new_content_for(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                " · ".join(x for x in (lead.get("company"), lead.get("service_interest")) if x),
                                lead.get("created_at"), "/dashboard"))
     return items
+
+
+async def pf_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """PF changes for the employee concerned; PF problems, member changes and rule changes for whoever manages PF."""
+    since = (datetime.utcnow() - timedelta(days=RECENT_DAYS)).isoformat()
+    me = _email(user)
+    granted = await rbac.get_user_permissions(user)
+    items: List[Dict[str, Any]] = []
+    for e in await get_collection("pf_events").find({}).sort("created_at", -1).to_list(500):
+        when = _ts(e.get("created_at"))
+        if when < since:
+            continue
+        mine = e.get("audience") == "employee" and me and me == str(e.get("employee_email") or "")
+        staff = e.get("audience") == "hr" and "hr.pf.view" in granted
+        if mine or staff:
+            items.append({**_item("update" if mine else "pf", f"pf-{e.get('_id')}", e.get("title") or "PF update",
+                                  e.get("description") or "", when, e.get("link") or "/hr/pf"),
+                          "tone": "warning" if e.get("kind") in ("failure", "exempt") else "info"})
+    if "hr.pf.view" in granted:
+        from app.services import pf_engine, pf_service
+        today = datetime.utcnow().date()
+        # A rule taking effect is news on the day it starts (and for the 30 days after).
+        for r in await pf_service.list_rules():
+            start = pf_engine.to_date(r.get("effective_from"))
+            if str(r.get("status")).upper() == "ACTIVE" and start and today - timedelta(days=RECENT_DAYS) <= start <= today:
+                items.append(_item("pf", f"pf-rule-effective-{r['id']}", f"PF rule \"{r.get('rule_name')}\" is now in effect",
+                                   f"From {start.isoformat()} · PF wage ₹{float(r.get('minimum_pf_wage') or 0):,.0f} to ₹{float(r.get('maximum_pf_wage') or 0):,.0f}",
+                                   start.isoformat(), "/hr/pf?tab=config"))
+        # Missing UAN / member ID: one item that changes id (so it re-alerts) when the count changes.
+        details = await pf_service.details_map()
+        active = await get_collection("employees").find({"employee_status": {"$in": ["Active", "Probation"]}}).to_list(5000)
+        applicable = [e for e in active if (details.get(str(e["_id"])) or pf_engine.default_details(e)).get("pf_applicable")]
+        no_uan = sum(1 for e in applicable if not (details.get(str(e["_id"])) or {}).get("uan"))
+        no_member = sum(1 for e in applicable if not (details.get(str(e["_id"])) or {}).get("pf_member_id"))
+        if no_uan or no_member:
+            items.append({**_item("pf", f"pf-incomplete-{no_uan}-{no_member}", "PF information is incomplete",
+                                  f"{no_uan} employee(s) without a UAN · {no_member} without a PF Member ID",
+                                  datetime.utcnow().date().isoformat(), "/hr/pf?tab=reports"), "tone": "warning"})
+    return items
+

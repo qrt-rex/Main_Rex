@@ -44,6 +44,8 @@ const Advances = lazy(() => import('./hr/pages/Advances').then((m) => ({ default
 const Broadcasts = lazy(() => import('./hr/pages/Broadcasts').then((m) => ({ default: m.Broadcasts })));
 const DataImport = lazy(() => import('./hr/pages/DataImport').then((m) => ({ default: m.DataImport })));
 const PayrollSettings = lazy(() => import('./hr/pages/PayrollSettings').then((m) => ({ default: m.PayrollSettings })));
+const PfManagement = lazy(() => import('./hr/pf/PfManagement').then((m) => ({ default: m.PfManagement })));
+const MyPf = lazy(() => import('./pages/MyPf').then((m) => ({ default: m.MyPf })));
 
 const BillingSection = lazy(() => import('./billing/BillingSection').then((m) => ({ default: m.BillingSection })));
 const InvoicesList = lazy(() => import('./billing/InvoicesList').then((m) => ({ default: m.InvoicesList })));
@@ -99,6 +101,7 @@ export default function App() {
                     <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/my/pf" element={<Suspense fallback={<PageSkeleton />}><MyPf /></Suspense>} />
 
                     <Route path="/hr" element={<HrSection />}>
                       <Route index element={guard('hr-overview', <HrDashboard />)} />
@@ -114,6 +117,7 @@ export default function App() {
                       <Route path={relative('hr-performance', '/hr')} element={guard('hr-performance', <Performance />)} />
                       <Route path={relative('hr-payroll', '/hr')} element={guard('hr-payroll', <Payroll />)} />
                       <Route path={relative('hr-payslips', '/hr')} element={guard('hr-payslips', <Payslips />)} />
+                      <Route path={relative('hr-pf', '/hr')} element={guard('hr-pf', <PfManagement />)} />
                       <Route path={relative('hr-sales-incentives', '/hr')} element={guard('hr-sales-incentives', <HrSalesIncentives />)} />
                       <Route path={relative('hr-incentive-settings', '/hr')} element={guard('hr-incentive-settings', <IncentiveSettings />)} />
                       <Route path={relative('hr-advances', '/hr')} element={guard('hr-advances', <Advances />)} />

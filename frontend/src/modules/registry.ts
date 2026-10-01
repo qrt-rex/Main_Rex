@@ -1,7 +1,7 @@
 import {
   Banknote, BarChart3, Briefcase, CalendarClock, CalendarDays, Contact, FileSpreadsheet,
   FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, LayoutDashboard, LineChart, Megaphone,
-  PlusCircle, ScrollText, Scale, ShieldCheck, SlidersHorizontal, Target, TrendingUp, Trophy, Upload, UserPlus,
+  PiggyBank, PlusCircle, ScrollText, Scale, ShieldCheck, SlidersHorizontal, Target, TrendingUp, Trophy, Upload, UserPlus,
   Users, UsersRound, Wallet, Workflow,
 } from 'lucide-react';
 import type { NavItem, NavSection } from '../types';
@@ -26,6 +26,7 @@ export const sections: NavSection[] = [
       { id: 'hr-performance', label: 'Performance', path: '/hr/performance', icon: LineChart, permission: 'hr.performance.view', description: 'Individual and company scorecards' },
       { id: 'hr-payroll', label: 'Payroll', path: '/hr/payroll', icon: Banknote, permission: 'hr.payroll.view', description: 'Monthly payroll runs and approvals' },
       { id: 'hr-payslips', label: 'Payslips', path: '/hr/payslips', icon: FileText, permission: 'hr.payroll.view', description: 'Salary register and payslip generation' },
+      { id: 'hr-pf', label: 'PF management', path: '/hr/pf', icon: PiggyBank, permission: 'hr.pf.view', description: 'PF dashboard, rules, employee PF details, PF payroll, reports and audit log' },
       { id: 'hr-sales-incentives', label: 'Sales incentives', path: '/hr/sales-incentives', icon: Trophy, permission: 'hr.payroll.view', description: 'Each sales person\'s collections, eligibility and incentive for payroll' },
       { id: 'hr-incentive-settings', label: 'Incentive settings', path: '/hr/incentive-settings', icon: SlidersHorizontal, permission: 'sales.incentives.configure', description: 'Daily, weekly and monthly incentive rules and slabs' },
       { id: 'hr-advances', label: 'Advances & loans', path: '/hr/advances', icon: HandCoins, permission: 'hr.advances.view', description: 'Advances, loans, bonuses and overtime' },

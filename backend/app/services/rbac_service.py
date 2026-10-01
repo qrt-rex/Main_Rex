@@ -119,11 +119,20 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("it.deployment.view", "Deployments & releases"),
         ("it.backup.manage", "Run & restore system backups"),
     ]),
+    ("hr_pf", "HR · Provident fund (PF)", [
+        ("hr.pf.view", "View PF details, PF payroll & PF dashboard"),
+        ("hr.pf.manage", "Add & edit employee PF details"),
+        ("hr.pf.reports", "View & export PF reports"),
+        ("hr.pf.audit", "View the PF audit log"),
+        ("hr.pf.configure", "Configure PF rules, rates & wage limits"),
+    ]),
 ]
 ALL_PERMISSIONS: List[str] = [key for _, _, perms in CATALOG for key, _ in perms]
 _ALL_SET = set(ALL_PERMISSIONS)
 
-_HR_ALL = [p for p in ALL_PERMISSIONS if p.startswith("hr.")]
+# PF rules, rates and wage limits are a Super Admin setting: HR views them but doesn't change them by default.
+_HR_ALL = [p for p in ALL_PERMISSIONS if p.startswith("hr.") and p != "hr.pf.configure"]
+_PF_STAFF = ["hr.pf.view", "hr.pf.manage", "hr.pf.reports", "hr.pf.audit"]
 # Sales staff use the sales workspace but don't edit its leads/schemes/material: that is Admin & Legal.
 _SALES_ALL = [p for p in ALL_PERMISSIONS if p.startswith("sales.") and p not in
               ("sales.hub.manage", "sales.scorecard.export", "sales.incentives.configure", "sales.dsc.manage")]
@@ -135,7 +144,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
-              "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr"],
+              "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr", *_PF_STAFF],
     "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "billing.all_invoices", "automations.manage", "documents.submit",
            "sales.scorecard.view", "sales.scorecard.export", "sales.incentives.configure"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "billing.gstr"],
@@ -294,6 +303,23 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("POST", "/api/bonuses"): "hr.advances.manage",
     ("POST", "/api/overtime"): "hr.advances.manage",
     # Payroll settings (includes SMTP credentials)
+    # PF / EPF management (an employee reads only their own PF through /api/pf/me)
+    ("GET", "/api/pf/config"): "hr.pf.view",
+    ("PUT", "/api/pf/settings"): "hr.pf.configure",
+    ("POST", "/api/pf/rules"): "hr.pf.configure",
+    ("PUT", "/api/pf/rules/{rule_id}"): "hr.pf.configure",
+    ("POST", "/api/pf/rules/{rule_id}/status"): "hr.pf.configure",
+    ("GET", "/api/pf/rules/{rule_id}/impact"): "hr.pf.view",
+    ("GET", "/api/employees/{emp_id}/pf"): "hr.pf.view",
+    ("POST", "/api/employees/{emp_id}/pf"): "hr.pf.manage",
+    ("PUT", "/api/employees/{emp_id}/pf"): "hr.pf.manage",
+    ("GET", "/api/pf/employees"): "hr.pf.view",
+    ("POST", "/api/pf/calculate"): "hr.pf.view",
+    ("GET", "/api/pf/payroll"): "hr.pf.view",
+    ("GET", "/api/pf/dashboard"): "hr.pf.view",
+    ("GET", "/api/pf/reports"): "hr.pf.reports",
+    ("GET", "/api/pf/audit-logs"): "hr.pf.audit",
+    ("GET", "/api/pf/me"): AUTHENTICATED,
     ("GET", "/api/payroll-settings"): "hr.settings.manage",
     ("PUT", "/api/payroll-settings"): "hr.settings.manage",
     ("POST", "/api/payroll-settings/test-smtp"): "hr.settings.manage",
@@ -457,6 +483,12 @@ ROLE_RESERVED_PERMISSIONS: Dict[str, Set[str]] = {
     "hr.payroll.view": {"superadmin", "admin", "hr"},
     "hr.payroll.process": {"superadmin", "admin", "hr"},
     "hr.payroll.approve": {"superadmin", "admin", "hr"},
+    # Everyone's PF details and contributions. Staff see their own PF through /api/pf/me instead.
+    "hr.pf.view": {"superadmin", "admin", "hr"},
+    "hr.pf.manage": {"superadmin", "admin", "hr"},
+    "hr.pf.reports": {"superadmin", "admin", "hr"},
+    "hr.pf.audit": {"superadmin", "admin", "hr"},
+    "hr.pf.configure": {"superadmin", "admin", "hr"},
     # The whole team's scorecard download and the incentive rules: HR and above. The DSC amount: Super Admin.
     "sales.scorecard.export": {"superadmin", "admin", "hr"},
     "sales.incentives.configure": {"superadmin", "admin", "hr"},
@@ -535,11 +567,36 @@ async def set_role_permission(role: str, permission: str, granted: bool, actor: 
 
     await get_collection("role_permissions").update_one(
         {"role": role},
-        {"$set": {"role": role, "permissions": ordered, "updated_by": actor, "updated_at": time.time()}},
+        # Saved from today's full catalog, so every permission migration is already reflected in it.
+        {"$set": {"role": role, "permissions": ordered, "updated_by": actor, "updated_at": time.time(),
+                  "migrations": sorted(NEW_PERMISSION_MIGRATIONS)}},
         upsert=True,
     )
     _cache.pop(role, None)
     return ordered
+
+
+# Permissions added after roles may already have been saved (a saved role replaces its defaults, so a new
+# permission would otherwise never reach it). Each is granted once to the saved roles whose defaults include it;
+# a Super Admin removing it afterwards sticks.
+NEW_PERMISSION_MIGRATIONS = {
+    "pf_v1": ["hr.pf.view", "hr.pf.manage", "hr.pf.reports", "hr.pf.audit"],
+}
+
+
+async def migrate_new_permissions() -> None:
+    col = get_collection("role_permissions")
+    for doc in await col.find({}).to_list(100):
+        role, done = doc.get("role"), set(doc.get("migrations") or [])
+        pending = [m for m in NEW_PERMISSION_MIGRATIONS if m not in done]
+        if not pending:
+            continue
+        perms = list(doc.get("permissions") or [])
+        for m in pending:
+            perms += [p for p in NEW_PERMISSION_MIGRATIONS[m] if p in DEFAULT_ROLE_PERMISSIONS.get(role, []) and p not in perms]
+        await col.update_one({"role": role}, {"$set": {"permissions": [p for p in ALL_PERMISSIONS if p in perms],
+                                                       "migrations": sorted(done | set(pending))}})
+        _cache.pop(role, None)
 
 
 def catalog_payload() -> Dict[str, Any]:

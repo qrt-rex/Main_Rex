@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query
 from fastapi.responses import HTMLResponse
 from app.services.payroll_service import PayrollService
 from app.services.pdf_service import PDFService
+from app.services import pf_service
 from app.services.email_service import EmailService
 from app.services.auth_service import get_current_admin
 from app.database import get_collection, fix_id
@@ -343,7 +344,8 @@ async def get_annual_statement(
 # ==========================================
 @router.post("/calculate-salary", response_model=SalaryCalculationResult)
 async def legacy_calculate_salary(req: SalaryCalculateRequest):
-    return PayrollService.calculate_salary_components(req)
+    pf = (await pf_service.calculate_amounts(req.base_salary))["employee_pf"] if req.pf_opted and req.base_salary > 0 else 0.0
+    return PayrollService.calculate_salary_components(req, pf_amount=pf)
 
 @router.post("/generate-slip", response_model=SalarySlipResponse)
 async def legacy_generate_slip(req: SalarySlipCreateRequest, admin: Dict[str, Any] = Depends(get_current_admin)):
@@ -445,6 +447,8 @@ async def delete_slip(slip_id: str, admin: Dict[str, Any] = Depends(get_current_
         if rec.get("is_locked") or rec.get("status") in ("FINALIZED", "PAID"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalized or paid payroll cannot be deleted. Unlock it first.")
         await get_collection("payrolls").delete_one({"_id": slip_id})
+        # The open PF transaction goes with its payroll record; a finalized one is never removed.
+        await get_collection("payroll_pf_transactions").delete_one({"payroll_id": slip_id, "finalized": {"$ne": True}})
     return {"success": True, "message": "Salary slip deleted successfully."}
 
 @router.post("/adjust-salary", response_model=PayrollAdjustmentResponse)
@@ -456,6 +460,7 @@ async def adjust_employee_salary(
     Increment or decrement a specific payroll component for an employee.
     Records the adjustment in the activity logs with old/new values and reason.
     """
+    before = await get_collection("employees").find_one({"_id": req.employee_id})
     try:
         result = await PayrollService.adjust_employee_salary(
             employee_id=req.employee_id,
@@ -472,6 +477,11 @@ async def adjust_employee_salary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to adjust salary.",
         )
+
+    if before and req.field in ("base_salary", "da"):
+        after = await get_collection("employees").find_one({"_id": req.employee_id})
+        if after:
+            await pf_service.on_salary_change(before, after, admin, reason=req.reason)
 
     # Log the payroll adjustment
     await LogService.log_payroll_adjustment(
