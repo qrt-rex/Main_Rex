@@ -13,6 +13,7 @@ import { SalesDashboard } from './SalesDashboard';
 import { SupportDashboard } from './SupportDashboard';
 import { LegalDashboard } from './LegalDashboard';
 import { AssignedClientsCard } from './LegalClients';
+import { MemberWorkPanel } from '../clientwork/MemberWorkPanel';
 import { canViewDashboard, dashboardPathFor } from './roles';
 import { workspaceSummary, type WorkspaceSummary } from './api';
 
@@ -52,12 +53,13 @@ function SummaryDashboard({ View }: { View: ComponentType<{ summary: WorkspaceSu
  */
 export function RoleDashboard() {
   const { slug = '' } = useParams();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
 
   if (!canViewDashboard(user?.role, slug, user?.extra_roles)) return <Navigate to={dashboardPathFor(user?.role)} replace />;
   return (
     <>
       <Body slug={slug} />
+      {slug !== 'legal' && can('clientwork.view') && <MemberWorkPanel queueOnly={slug === 'admin'} />}
       {slug !== 'legal' && <AssignedClientsCard />}
     </>
   );

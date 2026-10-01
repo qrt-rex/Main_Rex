@@ -29,6 +29,13 @@ KNOWN_COLLECTIONS = [
     "billing_payments", "billing_branches", "billing_settings", "billing_counters",
     "legal_records", "automations", "automation_runs", "client_documents", "client_document_files",
     "sales_leads", "sales_calls", "sales_schemes", "sales_materials", "sales_material_files", "sales_day_sessions",
+    # Client work lifecycle (see services/client_work_service.py)
+    "client_work", "client_tasks", "client_work_status_history", "client_work_activity", "client_work_hold_history",
+    "client_work_documents", "client_work_files", "client_work_comments", "client_work_notifications",
+    "client_work_time_logs", "client_work_active",
+    # IT Command Center (see services/it_service.py)
+    "it_incidents", "it_tasks", "emergency_access", "system_alerts",
+    "deployment_history", "backup_jobs", "configuration_changes", "session_tracking",
 ]
 
 
@@ -311,7 +318,9 @@ class PostgresDocumentAdapter:
         counter = [0]
         where = build_where(filter, params, counter)
         async with self.engine.begin() as conn:
-            result = await conn.execute(text(f"SELECT id, data FROM {self.table} WHERE {where} LIMIT 1"), params)
+            # FOR UPDATE: two writers can't both read the same row and overwrite each other, so a
+            # versioned filter ({"version": n}) works as a real compare-and-swap.
+            result = await conn.execute(text(f"SELECT id, data FROM {self.table} WHERE {where} LIMIT 1 FOR UPDATE"), params)
             row = result.fetchone()
 
             if row:

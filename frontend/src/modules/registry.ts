@@ -1,7 +1,7 @@
 import {
-  Banknote, BarChart3, Briefcase, CalendarClock, CalendarDays, Contact, FileSpreadsheet,
-  FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, LayoutDashboard, LineChart, Megaphone,
-  PlusCircle, ScrollText, Scale, ShieldCheck, SlidersHorizontal, Target, TrendingUp, Upload, UserPlus,
+  AlertTriangle, Archive, Banknote, BarChart3, Bell, Briefcase, CalendarClock, ClipboardList, CalendarDays, Contact, FileSpreadsheet,
+  FileText, FolderKanban, FolderOpen, Inbox, GraduationCap, Handshake, HandCoins, KeyRound, LayoutDashboard, LineChart, Megaphone,
+  Monitor, PlusCircle, ScrollText, Scale, Server, ShieldCheck, SlidersHorizontal, Target, Terminal, TrendingUp, Upload, UserPlus,
   Users, UsersRound, Wallet, Workflow,
 } from 'lucide-react';
 import type { NavItem, NavSection } from '../types';
@@ -55,6 +55,15 @@ export const sections: NavSection[] = [
     ],
   },
   {
+    id: 'clientwork',
+    label: 'Client Work',
+    icon: ClipboardList,
+    description: 'Assigned client work, holds and completion',
+    items: [
+      { id: 'client-work', label: 'Client work', path: '/client-work', icon: ClipboardList, permission: 'clientwork.view', description: 'Need action, on hold and completed client work, live' },
+    ],
+  },
+  {
     id: 'billing',
     label: 'Bill & Invoice',
     icon: FileSpreadsheet,
@@ -79,6 +88,21 @@ export const sections: NavSection[] = [
       { id: 'ops-finance', label: 'Finance', path: '/finance', icon: Wallet, permission: 'finance.view', placeholder: true, description: 'Invoicing and revenue' },
       { id: 'ops-projects', label: 'Projects', path: '/projects', icon: FolderKanban, permission: 'projects.view', placeholder: true, description: 'Client project delivery' },
       { id: 'ops-reports', label: 'Reports', path: '/reports', icon: BarChart3, permission: 'reports.view', placeholder: true, description: 'Cross-module analytics' },
+    ],
+  },
+  {
+    id: 'it',
+    label: 'IT Command Center',
+    icon: Server,
+    description: 'Infrastructure, security and operations',
+    items: [
+      { id: 'it-overview', label: 'IT Overview', path: '/dashboard/it', icon: Monitor, permission: 'it.systems.view', description: 'System health, metrics and live status' },
+      { id: 'it-incidents', label: 'Incidents', path: '/dashboard/it', icon: AlertTriangle, permission: 'it.incidents.manage', description: 'IT incident management' },
+      { id: 'it-tasks', label: 'IT Tasks', path: '/dashboard/it', icon: Terminal, permission: 'it.tasks.manage', description: 'Infrastructure and maintenance tasks' },
+      { id: 'it-alerts', label: 'Alerts', path: '/dashboard/it', icon: Bell, permission: 'it.systems.view', description: 'Real-time system alerts' },
+      { id: 'it-deployments', label: 'Deployments', path: '/dashboard/it', icon: Upload, permission: 'it.deployment.view', description: 'Release history and rollback' },
+      { id: 'it-backups', label: 'Backups', path: '/dashboard/it', icon: Archive, permission: 'it.backup.manage', description: 'Backup and recovery center' },
+      { id: 'it-emergency', label: 'Emergency Access', path: '/dashboard/it', icon: KeyRound, permission: 'it.emergency.manage', description: 'Break-glass emergency access' },
     ],
   },
   {

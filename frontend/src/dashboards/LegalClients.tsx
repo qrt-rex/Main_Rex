@@ -11,6 +11,7 @@ import { Card, CardHeader } from '../components/common/Card';
 import { Modal } from '../components/common/Modal';
 import { useToast } from '../components/common/ToastContext';
 import { pendingLeaves, decideLeave, type LeaveRequest } from '../hr/api';
+import { AssignClientModal } from '../clientwork/AssignClientModal';
 
 export interface LegalClient {
   kind: 'record' | 'document';
@@ -97,6 +98,14 @@ export function LegalAssignClients() {
   const staff = useApi(() => api.get<{ staff: Staff[] }>('/api/legal/staff'));
   const list = useClients({ search: q, assigned, kind });
   const [busy, setBusy] = useState<string | null>(null);
+  // Assigning to a member opens the work-details dialog (priority, deadline, required action); unassigning is immediate.
+  const [pending, setPending] = useState<{ client: LegalClient; member: Staff } | null>(null);
+
+  const choose = (c: LegalClient, userId: string) => {
+    const member = (staff.data?.staff ?? []).find((p) => p.id === userId);
+    if (member) setPending({ client: c, member });
+    else void assign(c, '');
+  };
 
   const assign = async (c: LegalClient, userId: string) => {
     setBusy(c.id);
@@ -146,7 +155,7 @@ export function LegalAssignClients() {
                 <td className={th}><StatusBadge status={c.status} /></td>
                 <td className={`${th} pr-6`}>
                   <select aria-label={`Assign ${c.company_name}`} value={c.assigned_to?.user_id ?? ''} disabled={busy === c.id || staff.loading}
-                    onChange={(e) => assign(c, e.target.value)} className={`${inputCls} w-52`}>
+                    onChange={(e) => choose(c, e.target.value)} className={`${inputCls} w-52`}>
                     <option value="">— Unassigned —</option>
                     {people.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role_label}</option>)}
                     {c.assigned_to && !people.some((p) => p.id === c.assigned_to!.user_id) && <option value={c.assigned_to.user_id}>{c.assigned_to.name} (inactive)</option>}
@@ -157,6 +166,13 @@ export function LegalAssignClients() {
           </tbody>
         </table>
       </div>
+      <AssignClientModal<LegalClient>
+        client={pending?.client ?? null} member={pending?.member ?? null} onClose={() => setPending(null)}
+        onAssigned={(updated) => {
+          list.setData((d) => d && { ...d, items: d.items.map((x) => (x.id === updated.id ? updated : x)) });
+          showToast(`${updated.company_name} assigned to ${updated.assigned_to?.name}. It is in their Need Action list now.`, 'success');
+        }}
+      />
     </div>
   );
 }

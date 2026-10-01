@@ -10,6 +10,7 @@ import { HBarChart } from '../components/charts/Charts';
 import { ActivityTable, ModuleEntities, ProgressCard, SectionTitle, StatGrid, TaskPanel, TwoColumn } from './components';
 import { DashboardIntro } from './DashboardShell';
 import { SalesTeamOverview } from '../sales/SalesToday';
+import { ClientWorkWidget } from '../clientwork/ClientWorkWidget';
 import type { WorkspaceSummary } from './api';
 
 /** Organisation-wide control centre: people, money, pipeline, access and activity. */
@@ -71,6 +72,12 @@ export function AdminDashboard({ summary }: { summary: WorkspaceSummary }) {
           )}
         </>}
       />
+
+      {can('clientwork.view') && (
+        <div className="mb-6">
+          <ClientWorkWidget />
+        </div>
+      )}
 
       <StatGrid>
         {workforce && (

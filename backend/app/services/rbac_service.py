@@ -88,6 +88,11 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("legal.manage", "Legal team: see every client, assign, approve & import"),
         ("documents.submit", "Submit client document forms (COI, GST, PAN, ITR…)"),
     ]),
+    ("client_work", "Client Work", [
+        ("clientwork.view", "Client work assigned to you: tasks, hold, documents and completion"),
+        ("clientwork.monitor", "Legal team: monitor every client's work, reassign, change priority & deadline"),
+        ("clientwork.admin", "Super Admin: organisation-wide client work analytics & status overrides"),
+    ]),
     ("operations", "Operations", [
         ("finance.view", "Finance"),
         ("projects.view", "Projects"),
@@ -112,6 +117,11 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("it.security.view", "Security & access events"),
         ("it.deployment.view", "Deployments & releases"),
         ("it.backup.manage", "Run & restore system backups"),
+        ("it.incidents.manage", "Manage IT incidents"),
+        ("it.tasks.manage", "Manage IT tasks"),
+        ("it.emergency.manage", "Emergency / break-glass access"),
+        ("it.config.manage", "System configuration"),
+        ("it.crm.monitor", "CRM operational monitoring"),
     ]),
 ]
 ALL_PERMISSIONS: List[str] = [key for _, _, perms in CATALOG for key, _ in perms]
@@ -128,15 +138,24 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
-              "sales.hub.manage"],
-    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit"],
-    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "hr.leave.view", "hr.leave.approve"],
-    "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
+              "sales.hub.manage", "clientwork.view"],
+    "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "automations.manage", "documents.submit", "clientwork.view"],
+    "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "hr.leave.view", "hr.leave.approve",
+              "clientwork.view", "clientwork.monitor"],
+    "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view", "clientwork.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
-           "users.manage", "audit.view"],
+           "it.incidents.manage", "it.tasks.manage", "it.emergency.manage", "it.config.manage",
+           "it.crm.monitor", "users.manage", "audit.view", "clientwork.view"],
     "support": ["support.desk.view", "clients.view", "sales.customers.view", "sales.contacts.view",
-                "hr.broadcasts.view", "documents.submit"],
-    "employee": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view"],
+                "hr.broadcasts.view", "documents.submit", "clientwork.view"],
+    "employee": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view", "clientwork.view"],
+}
+
+# Permissions added after a role's grants were first saved in Roles & Permissions. A saved role
+# would otherwise never receive them (its list replaces the defaults), so each is merged in once,
+# then persisted: a Super Admin can still remove it afterwards.
+LATER_ADDED_DEFAULTS: Dict[str, List[str]] = {
+    "client_work": ["clientwork.view", "clientwork.monitor"],
 }
 
 # ---------------------------------------------------------------------------
@@ -358,6 +377,40 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/client-documents/{submission_id}"): "legal.view",
     ("GET", "/api/client-documents/{submission_id}/files/{file_id}"): "legal.view",
     ("PATCH", "/api/client-documents/{submission_id}/status"): "legal.view",
+    # Client work lifecycle. Who may see or change a given piece of work is also checked per record
+    # (assignee / monitor / admin) inside client_work_service, so a route permission alone never opens it.
+    ("GET", "/api/client-work/stream"): "clientwork.view",
+    ("GET", "/api/client-work/summary"): "clientwork.view",
+    ("GET", "/api/client-work/stats"): "clientwork.view",
+    ("GET", "/api/client-work/work"): "clientwork.view",
+    ("GET", "/api/client-work/work/mine"): "clientwork.view",
+    ("GET", "/api/client-work/waiting"): "clientwork.view",
+    ("POST", "/api/client-work/work"): "clientwork.monitor",
+    ("POST", "/api/client-work/assign"): "clientwork.monitor",
+    ("GET", "/api/client-work/work/{work_id}"): "clientwork.view",
+    ("PATCH", "/api/client-work/work/{work_id}"): "clientwork.view",
+    ("PUT", "/api/client-work/work/{work_id}/assign"): "clientwork.monitor",
+    ("PATCH", "/api/client-work/work/{work_id}/status"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/start"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/hold"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/resume"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/complete"): "clientwork.view",
+    ("GET", "/api/client-work/work/{work_id}/tasks"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/tasks"): "clientwork.view",
+    ("PATCH", "/api/client-work/tasks/{task_id}"): "clientwork.view",
+    ("POST", "/api/client-work/tasks/{task_id}/complete"): "clientwork.view",
+    ("GET", "/api/client-work/work/{work_id}/comments"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/comments"): "clientwork.view",
+    ("POST", "/api/client-work/comments/{comment_id}/resolve"): "clientwork.view",
+    ("GET", "/api/client-work/work/{work_id}/documents"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/documents"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/document-requests"): "clientwork.view",
+    ("POST", "/api/client-work/work/{work_id}/client-response"): "clientwork.view",
+    ("GET", "/api/client-work/documents/{doc_id}/file"): "clientwork.view",
+    ("GET", "/api/client-work/work/{work_id}/timeline"): "clientwork.view",
+    ("GET", "/api/client-work/work/{work_id}/history"): "clientwork.view",
+    ("GET", "/api/client-work/notifications"): "clientwork.view",
+    ("POST", "/api/client-work/notifications/read"): "clientwork.view",
     # Sales workspace (sales staff use it; Admin & Legal manage its content)
     ("GET", "/api/sales-hub/summary"): "sales.hub.view",
     ("POST", "/api/sales-hub/day/start"): "sales.hub.view",
@@ -394,6 +447,37 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/automations/runs"): "automations.manage",
     ("PUT", "/api/automations/{automation_id}"): "automations.manage",
     ("POST", "/api/automations/{automation_id}/run"): "automations.manage",
+    # IT Command Center
+    ("GET", "/api/it/dashboard"): "it.systems.view",
+    ("GET", "/api/it/health"): "it.systems.view",
+    ("GET", "/api/it/activity-stream"): "audit.view",
+    ("GET", "/api/it/audit-logs"): "audit.view",
+    ("GET", "/api/it/incidents"): "it.incidents.manage",
+    ("GET", "/api/it/incidents/{incident_id}"): "it.incidents.manage",
+    ("POST", "/api/it/incidents"): "it.incidents.manage",
+    ("PATCH", "/api/it/incidents/{incident_id}"): "it.incidents.manage",
+    ("GET", "/api/it/tasks"): "it.tasks.manage",
+    ("GET", "/api/it/tasks/{task_id}"): "it.tasks.manage",
+    ("POST", "/api/it/tasks"): "it.tasks.manage",
+    ("PATCH", "/api/it/tasks/{task_id}"): "it.tasks.manage",
+    ("GET", "/api/it/alerts"): "it.systems.view",
+    ("POST", "/api/it/alerts/{alert_id}/acknowledge"): "it.systems.view",
+    ("POST", "/api/it/alerts/{alert_id}/resolve"): "it.systems.view",
+    ("GET", "/api/it/security"): "it.security.view",
+    ("GET", "/api/it/sessions"): "it.security.view",
+    ("POST", "/api/it/sessions/{user_id}/revoke"): "it.security.view",
+    ("GET", "/api/it/deployments"): "it.deployment.view",
+    ("POST", "/api/it/deployments"): "it.deployment.view",
+    ("GET", "/api/it/backups"): "it.backup.manage",
+    ("POST", "/api/it/backups"): "it.backup.manage",
+    ("GET", "/api/it/database"): "it.systems.view",
+    ("GET", "/api/it/crm"): "it.crm.monitor",
+    ("POST", "/api/it/emergency-access/request"): "it.emergency.manage",
+    ("POST", "/api/it/emergency-access/{access_id}/approve"): "it.emergency.manage",
+    ("POST", "/api/it/emergency-access/{access_id}/revoke"): "it.emergency.manage",
+    ("GET", "/api/it/emergency-access"): "it.emergency.manage",
+    ("GET", "/api/it/users/{user_id}/activity"): "users.manage",
+    ("GET", "/api/it/search"): "it.systems.view",
 }
 
 # Extra permission when a query flag widens what a route returns.
@@ -433,6 +517,14 @@ async def get_role_permissions(role: Optional[str]) -> Set[str]:
 
     doc = await get_collection("role_permissions").find_one({"role": role})
     granted = doc["permissions"] if doc else DEFAULT_ROLE_PERMISSIONS.get(role, [])
+    if doc:
+        applied = set(doc.get("later_defaults_applied") or [])
+        fresh = [g for g in LATER_ADDED_DEFAULTS if g not in applied]
+        if fresh:
+            defaults = set(DEFAULT_ROLE_PERMISSIONS.get(role, []))
+            granted = list(granted) + [p for g in fresh for p in LATER_ADDED_DEFAULTS[g] if p in defaults and p not in granted]
+            await get_collection("role_permissions").update_one(
+                {"role": role}, {"$set": {"permissions": granted, "later_defaults_applied": sorted(applied | set(fresh))}})
     perms = {p for p in granted if p in _ALL_SET and not reserved_blocked(p, [role])}
     _cache[role] = (time.monotonic() + _CACHE_TTL_SECONDS, perms)
     return perms
@@ -448,6 +540,8 @@ ROLE_RESERVED_PERMISSIONS: Dict[str, Set[str]] = {
     "hr.payroll.view": {"superadmin", "admin", "hr"},
     "hr.payroll.process": {"superadmin", "admin", "hr"},
     "hr.payroll.approve": {"superadmin", "admin", "hr"},
+    # Organisation-wide client work analytics and status overrides.
+    "clientwork.admin": {"superadmin"},
 }
 # Everyone else sees only their own attendance, whatever permissions they hold.
 FULL_ATTENDANCE_ROLES = {"superadmin", "admin", "hr"}

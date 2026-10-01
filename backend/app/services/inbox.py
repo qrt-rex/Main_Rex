@@ -140,6 +140,18 @@ async def broadcast_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     return items
 
 
+async def client_work_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Notifications the client work module generated for this user (assigned, on hold, completed, overdue…)."""
+    if "clientwork.view" not in await rbac.get_user_permissions(user):
+        return []
+    uid = str(user.get("id") or user.get("_id") or "")
+    since = (datetime.utcnow() - timedelta(days=RECENT_DAYS)).isoformat()
+    rows = await get_collection("client_work_notifications").find({"user_id": uid}).sort("created_at", -1).to_list(100)
+    return [_item("update", f"client-work-{n.get('_id')}", n.get("title") or "Client work", n.get("message") or "",
+                  n.get("created_at"), n.get("link") or "/client-work")
+            for n in rows if _ts(n.get("created_at")) >= since]
+
+
 async def new_content_for(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     if "sales.hub.view" not in await rbac.get_user_permissions(user):
         return []

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from './api';
 import { useAuth } from '../auth/AuthContext';
+import { useClientWorkLive } from '../clientwork/live';
 
 export interface NotificationItem {
   id: string;
@@ -77,7 +78,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return { items, loading, error, unreadCount: items.filter(isUnread).length, isUnread, markAllRead, reload };
   }, [items, loading, error, lastSeen, markAllRead, reload]);
 
-  return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
+  return (
+    <NotificationsContext.Provider value={value}>
+      {user?.permissions.includes('clientwork.view') && <ClientWorkBellSync userId={user.id} reload={reload} />}
+      {children}
+    </NotificationsContext.Provider>
+  );
+}
+
+/** Client work events that notify this user refresh the bell at once (the 2-minute poll stays as a fallback). */
+function ClientWorkBellSync({ userId, reload }: { userId: string; reload: () => void }) {
+  useClientWorkLive(reload, (e) => (e.notified ?? []).includes(userId));
+  return null;
 }
 
 export function useNotifications() {

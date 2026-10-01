@@ -45,6 +45,9 @@ from app.routers.automations import router as automations_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.sales_hub import router as sales_hub_router
 from app.routers.ivr import router as ivr_router
+from app.routers.it_dashboard import router as it_dashboard_router
+from app.routers.client_work import router as client_work_router
+from app.services import client_work_service
 from app.services.automation_service import AutomationService
 from app.services.rbac_service import enforce, check_route_coverage
 
@@ -57,6 +60,17 @@ logger = logging.getLogger("rexera.main")
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIST = os.path.abspath(os.path.join(BACKEND_DIR, "..", "frontend", "dist"))
 PAYSLIP_IMAGES = {p: os.path.basename(p) for p in ("logo.png", "stamp.png", "assets/logo.png", "assets/stamp.png")}
+
+async def client_work_sweep_loop():
+    while True:
+        try:
+            await client_work_service.sweep_overdue(force=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Client work overdue sweep failed: {e}")
+        await asyncio.sleep(300)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,9 +86,22 @@ async def lifespan(app: FastAPI):
     scheduler = None
     if settings.AUTOMATIONS_ENABLED and settings.APP_ENV.lower() != "test":
         scheduler = asyncio.create_task(AutomationService.scheduler_loop())
+    # Client work: clients assigned before the module existed get their work record, and overdue
+    # work is announced every few minutes (also whenever dashboard statistics are requested).
+    sweeper = None
+    if settings.APP_ENV.lower() != "test":
+        try:
+            made = await client_work_service.backfill_assigned()
+            if made:
+                logger.info(f"Created client work for {made} previously assigned client(s).")
+        except Exception as e:
+            logger.warning(f"Client work backfill skipped: {e}")
+        sweeper = asyncio.create_task(client_work_sweep_loop())
     yield
     if scheduler:
         scheduler.cancel()
+    if sweeper:
+        sweeper.cancel()
     logger.info("Shutting down Rexera HR Management System...")
     await db_manager.close()
 
@@ -119,8 +146,8 @@ API_ROUTERS = [
     otp_router, payroll_router, advances_loans_router, payroll_settings_router,
     dashboard_router, logs_router, attendance_router, leaves_router, productivity_router,
     bulk_import_router, reports_router, broadcast_router, rbac_router, users_router,
-    notifications_router, workspace_router, billing_router, legal_router, automations_router,
-    client_documents_router, sales_hub_router, ivr_router,
+    notifications_router, workspace_router, billing_router, legal_router, automations_router, it_dashboard_router,
+    client_documents_router, sales_hub_router, ivr_router, client_work_router,
 ]
 for api_router in API_ROUTERS:
     app.include_router(api_router, dependencies=[Depends(enforce)])

@@ -35,6 +35,7 @@ async def my_notifications(admin: Dict[str, Any] = Depends(get_current_admin)):
     items += await inbox.updates_for(admin)
     items += await inbox.broadcast_items(admin)
     items += await inbox.new_content_for(admin)
+    items += await inbox.client_work_items(admin)
 
     if "hr.recruitment.view" in granted:
         items += [_event_item(log) for log in await LogService.get_notifications(limit=15)]

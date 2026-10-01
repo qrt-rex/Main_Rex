@@ -51,6 +51,8 @@ const BillingDocuments = lazy(() => import('./billing/BillingDocuments').then((m
 const CandidateApply = lazy(() => import('./pages/public/CandidateApply').then((m) => ({ default: m.CandidateApply })));
 const JoiningPortal = lazy(() => import('./pages/public/JoiningPortal').then((m) => ({ default: m.JoiningPortal })));
 const LegalDashboard = lazy(() => import('./dashboards/LegalDashboard').then((m) => ({ default: m.LegalDashboard })));
+const ClientWorkPage = lazy(() => import('./clientwork/ClientWorkPage').then((m) => ({ default: m.ClientWorkPage })));
+const ClientWorkWorkspace = lazy(() => import('./clientwork/ClientWorkWorkspace').then((m) => ({ default: m.ClientWorkWorkspace })));
 const IvrApp = lazy(() => import('./ivr/IvrApp').then((m) => ({ default: m.IvrApp })));
 const DialerPage = lazy(() => import('./sales/DialerPage').then((m) => ({ default: m.DialerPage })));
 
@@ -144,6 +146,10 @@ export default function App() {
 
                     {/* Legal Module */}
                     <Route path="/legal" element={guard('legal-matters', <LegalDashboard />)} />
+
+                    {/* Client work lifecycle: the dashboard widget and queues open here */}
+                    <Route path="/client-work" element={guard('client-work', <ClientWorkPage />)} />
+                    <Route path="/client-work/:id" element={guard('client-work', <ClientWorkWorkspace />)} />
 
                     {placeholderRoutes.map((item) => (
                       <Route key={item.id} path={item.path} element={guard(item.id, <ModulePage id={item.id} />)} />
