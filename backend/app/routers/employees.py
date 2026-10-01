@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Query
 from app.schemas.employee import (
     EmployeeCreateRequest,
     EmployeeUpdateRequest,
@@ -10,6 +10,7 @@ from app.schemas.employee import (
 )
 from app.services.employee_service import EmployeeService
 from app.services.auth_service import get_current_admin
+from app.services.log_service import LogService
 from app.utils.validators import row_error
 
 
@@ -44,9 +45,15 @@ def _employee_view(doc: Dict[str, Any]) -> EmployeeResponse:
 
 @router.post("", response_model=EmployeeResponse, include_in_schema=False)
 @router.post("/", response_model=EmployeeResponse)
-async def create_employee(req: EmployeeCreateRequest, admin: Dict[str, Any] = Depends(get_current_admin)):
-    """Create a new employee with structured salary breakdown."""
+async def create_employee(req: EmployeeCreateRequest, request: Request, admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Create a new employee with structured salary breakdown (and their sign-in account when a password is given)."""
     doc = await EmployeeService.create_employee(req)
+    if req.password:
+        await LogService.create_log(
+            action="USER_CREATE", performed_by=admin.get("email", ""), performed_by_role=admin.get("role", ""),
+            target=doc["email"], details={"message": f"Created sales account for {doc['email']} from Add employee"},
+            ip_address=request.client.host if request.client else "",
+        )
     return _employee_view(doc)
 
 @router.get("", response_model=EmployeeListResponse, include_in_schema=False)

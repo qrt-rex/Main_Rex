@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException, status
 from app.database import get_collection, fix_id, fix_ids
 from app.schemas.employee import EmployeeCreateRequest, EmployeeUpdateRequest
+from app.utils.security import hash_password
 from app.utils.validators import mask_account_number, search_pattern
 
 logger = logging.getLogger("rexera.employees")
@@ -45,9 +46,14 @@ class EmployeeService:
         now = datetime.utcnow().isoformat()
 
         doc = req.model_dump()
+        password = doc.pop("password", None)  # only its hash is kept, on the sign-in account
         doc["email"] = str(doc["email"]).strip().lower()
         doc["employee_code"] = (doc.get("employee_code") or "").strip()
         await cls.ensure_unique(email=doc["email"], employee_code=doc["employee_code"] or None)
+        # Never take over an existing account (it may belong to an admin): those are managed under Users.
+        if password and await get_collection("admins").find_one({"email": doc["email"]}):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail=f"A login account for {doc['email']} already exists. Leave the password blank, or manage it under Users.")
         if not doc.get("employee_code"):
             doc["employee_code"] = await cls.generate_next_employee_code()
             
@@ -69,6 +75,12 @@ class EmployeeService:
         res = await col.insert_one(doc)
         doc["id"] = str(res.inserted_id)
         doc["_id"] = str(res.inserted_id)
+        if password:
+            await get_collection("admins").insert_one({
+                "username": doc["full_name"], "email": doc["email"], "role": "sales",  # Employee / Sales Person
+                "password_hash": hash_password(password), "is_active": True,
+                "created_at": now, "updated_at": now, "last_login": None,
+            })
         return doc
 
     @classmethod

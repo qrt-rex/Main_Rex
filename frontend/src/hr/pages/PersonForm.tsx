@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { phoneDigits, phoneInput } from '../../lib/phone';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Briefcase, ChevronLeft, ChevronRight, FileSpreadsheet, GraduationCap, Upload, X } from 'lucide-react';
+import { Briefcase, Check, ChevronLeft, ChevronRight, Circle, Eye, EyeOff, FileSpreadsheet, GraduationCap, Upload, X } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { ApiError } from '../../lib/api';
 import { money, todayISO } from '../../lib/format';
+import { isStrongPassword, PASSWORD_RULES } from '../../lib/password';
 import { parseSpreadsheet, downloadTemplate } from '../../lib/spreadsheet';
 import {
   BRANCHES, bulkEmployees, bulkInterns, createEmployee, createIntern, DEPARTMENTS, DESIGNATIONS, getEmployee, updateEmployee,
@@ -47,7 +48,7 @@ function addMonths(iso: string, months: number) {
 const blank = (): Values => ({
   code: '', full_name: '', email: '', mobile_number: '', department: 'SALES', department_other: '', role: '', manager: '',
   // employee
-  gender: 'MALE', branch: 'AMD', date_of_joining: todayISO(), date_of_exit: '', employee_status: 'Active',
+  gender: 'MALE', branch: 'AMD', date_of_joining: todayISO(), date_of_exit: '', employee_status: 'Active', password: '',
   base_salary: '50000', hra: '20000', conveyance_allowance: '2000', special_allowance: '5000', professional_tax: '200', pf_opted: true,
   // intern
   intern_gender: 'Other', date_of_birth: '', college_university: '', degree: '', branch_specialization: '', current_semester: '', roll_number: '',
@@ -119,6 +120,7 @@ function toPayload(kind: Kind, v: Values) {
       special_allowance: n('special_allowance'), professional_tax: n('professional_tax'), pf_opted: !!v.pf_opted,
       bank_name: String(v.bank_name).trim(), account_no: String(v.account_no).trim(),
       ifsc_code: String(v.ifsc_code).trim().toUpperCase(), employee_status: v.employee_status,
+      ...(v.password ? { password: String(v.password) } : {}),
     };
   }
   return {
@@ -144,6 +146,7 @@ function validate(kind: Kind, v: Values) {
     if (!v.date_of_joining) e.date_of_joining = 'Choose the joining date.';
     if (v.date_of_exit && v.date_of_joining && v.date_of_exit < v.date_of_joining) e.date_of_exit = 'The exit date can\'t be before the joining date.';
     if (!(Number(v.base_salary) > 0)) e.base_salary = 'Enter the basic salary.';
+    if (v.password && !isStrongPassword(String(v.password))) e.password = 'The password doesn\'t meet every rule below.';
     for (const k of ['hra', 'conveyance_allowance', 'special_allowance', 'professional_tax']) {
       if (Number(v[k]) < 0) e[k] = 'Amounts cannot be negative.';
     }
@@ -179,6 +182,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
   const [records, setRecords] = useState<Row[]>([]);
   const [recordIndex, setRecordIndex] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -273,7 +277,7 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
         showToast(`${payload.full_name} updated`, 'success');
       } else if (kind === 'employee') {
         const res = await createEmployee(payload);
-        showToast(`${res.full_name} (${res.employee_code}) added`, 'success');
+        showToast(`${res.full_name} (${res.employee_code}) added${values.password ? ' with a login' : ''}`, 'success');
       } else {
         const res = await createIntern(payload);
         showToast(`${res.full_name} (${res.intern_code}) enrolled`, 'success');
@@ -381,6 +385,41 @@ export function PersonForm({ kind: routeKind }: { kind: Kind }) {
               )}
             </div>
           </Card>
+
+          {kind === 'employee' && !editing && (
+            <Card>
+              <CardHeader title="Login access" description="Optional. Set a password and this employee signs in with their email as an Employee / Sales Person. Leave blank to skip." />
+              <div className="space-y-3 p-4">
+                <div className="flex flex-col gap-1.5">
+                  {/* Label outside the row so the toggle stays level with the box when an error shows under it. */}
+                  <label htmlFor="f-password" className="text-[13px] font-medium text-text-secondary">Password</label>
+                  <div className="flex items-start gap-2">
+                    <Input type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={16}
+                      {...field('password')} className="flex-1" inputClassName="font-mono" />
+                    <Button variant="secondary" size="icon" aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword} onClick={() => setShowPassword((s) => !s)}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </Button>
+                  </div>
+                </div>
+                {values.password ? (
+                  <ul className="grid gap-1 text-xs sm:grid-cols-2" aria-label="Password rules">
+                    {PASSWORD_RULES.map((r) => {
+                      const ok = r.test(String(values.password));
+                      return (
+                        <li key={r.label} className={`flex items-center gap-1.5 ${ok ? 'text-success' : 'text-text-muted'}`}>
+                          {ok ? <Check size={13} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}
+                          {r.label}<span className="sr-only">{ok ? ' (met)' : ' (missing)'}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-text-muted">8 to 16 characters, with an uppercase letter, a lowercase letter, a number and a special symbol.</p>
+                )}
+              </div>
+            </Card>
+          )}
 
           {kind === 'intern' ? (
             <Card>

@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-from app.utils.validators import optional_ifsc, require_choice, require_iso_date, require_mobile
+from app.utils.validators import optional_ifsc, require_choice, require_iso_date, require_mobile, require_strong_password
 
 EMPLOYEE_STATUSES = ["Active", "Probation", "Inactive", "Resigned", "Terminated"]
 JOINING_STATUSES = ["Pending", "Completed", "Joined"]
@@ -79,6 +79,13 @@ class EmployeeCreateRequest(_EmployeeFieldRules):
     ifsc_code: str = ""
     employee_status: str = "Active"  # Active, Probation, Inactive, Resigned, Terminated
     joining_status: str = "Completed"  # Pending, Completed
+    # Optional: creates the employee's sign-in account (their email + this password). Never stored on the employee.
+    password: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, v):
+        return require_strong_password(v) if v else None
 
 class EmployeeUpdateRequest(_EmployeeFieldRules):
     full_name: Optional[str] = Field(default=None, max_length=120)
