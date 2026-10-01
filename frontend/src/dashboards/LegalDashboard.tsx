@@ -195,9 +195,9 @@ export function LegalDashboard() {
     // The app header already shows the account and sign-out, so this page has no header bar of its own.
     <div className="text-slate-900 dark:text-slate-100 pb-16 font-sans">
       <div className="max-w-7xl mx-auto">
-       <div className="grid gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
         {/* Section sidebar */}
-        <nav aria-label="Legal sections" className="self-start lg:sticky lg:top-24">
+        <nav aria-label="Legal sections" className="min-w-0 self-start lg:sticky lg:top-24">
           <ul className="flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-col">
             {LEGAL_SECTIONS.map(({ id, label, icon: Icon }) => (
               <li key={id} className="shrink-0">

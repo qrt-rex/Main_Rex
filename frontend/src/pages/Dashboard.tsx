@@ -112,8 +112,8 @@ export function Dashboard() {
           </Card>
         </div>
       ) : (
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
           {can('hr.employees.view') && (
             <Card>
               <CardHeader title="Employees by department" description="Current headcount" actions={<Link to="/hr/employees" className="text-xs font-medium text-primary hover:underline">View directory</Link>} />
@@ -141,16 +141,16 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {actions.length > 0 && (
             <Card>
               <CardHeader title="Quick actions" />
-              <div className="grid gap-2 p-3">{actions.map((a) => <QuickAction key={a.to} {...a} />)}</div>
+              <div className="grid grid-cols-1 gap-2 p-3">{actions.map((a) => <QuickAction key={a.to} {...a} />)}</div>
             </Card>
           )}
           <Card>
             <CardHeader title="Your modules" description={`${sections.length} available to your role`} />
-            <div className="grid gap-2 p-3">
+            <div className="grid grid-cols-1 gap-2 p-3">
               {sections.map((s) => <ModuleCard key={s.id} section={s} />)}
             </div>
           </Card>
