@@ -98,8 +98,8 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("clientwork.admin", "Super Admin: organisation-wide client work analytics & status overrides"),
     ]),
     ("operations_dashboard", "Operation dashboard", [
-        ("operations.dashboard.view", "Operation dashboard: every client case, its stage and the documents Legal provided or approved"),
-        ("operations.dashboard.manage", "Move client cases between operation stages"),
+        ("operations.dashboard.view", "Operation dashboard: unassigned client cases and those assigned to or by you; move stages, assign to an Admin, call & email reminders"),
+        ("operations.dashboard.manage", "See and reassign every client case on the Operation dashboard"),
     ]),
     ("operations", "Operations", [
         ("finance.view", "Finance"),
@@ -159,7 +159,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
               "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr", *_PF_STAFF, "clientwork.view",
-              "operations.dashboard.view", "operations.dashboard.manage"],
+              "operations.dashboard.view"],
     "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "billing.all_invoices", "automations.manage", "documents.submit",
            "sales.scorecard.view", "sales.scorecard.export", "sales.incentives.configure", "clientwork.view"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "hr.leave.view", "hr.leave.approve", "billing.gstr",
@@ -422,8 +422,14 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     # (assignee / monitor / admin) inside client_work_service, so a route permission alone never opens it.
     # Operation dashboard
     ("GET", "/api/operations/board"): "operations.dashboard.view",
+    ("GET", "/api/operations/assignees"): "operations.dashboard.view",
     ("GET", "/api/operations/cases/{kind}/{item_id}"): "operations.dashboard.view",
-    ("PUT", "/api/operations/cases/{kind}/{item_id}/stage"): "operations.dashboard.manage",
+    ("PUT", "/api/operations/cases/{kind}/{item_id}/stage"): "operations.dashboard.view",
+    ("PUT", "/api/operations/cases/{kind}/{item_id}/assign"): "operations.dashboard.view",
+    ("POST", "/api/operations/cases/{kind}/{item_id}/reminders"): "operations.dashboard.view",
+    ("GET", "/api/operations/reminders"): "operations.dashboard.view",
+    ("POST", "/api/operations/reminders/{reminder_id}/done"): "operations.dashboard.view",
+    ("DELETE", "/api/operations/reminders/{reminder_id}"): "operations.dashboard.view",
     ("GET", "/api/operations/cases/{kind}/{item_id}/documents/{doc_id}"): "operations.dashboard.view",
     ("GET", "/api/client-work/stream"): "clientwork.view",
     ("GET", "/api/client-work/summary"): "clientwork.view",

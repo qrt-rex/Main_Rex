@@ -47,7 +47,7 @@ from app.routers.sales_hub import router as sales_hub_router
 from app.routers.ivr import router as ivr_router
 from app.routers.it_dashboard import router as it_dashboard_router
 from app.routers.client_work import router as client_work_router
-from app.services import client_work_service
+from app.services import client_work_service, operations_service
 from app.routers.sales_performance import router as sales_performance_router
 from app.routers.pf import router as pf_router
 from app.routers.operations import router as operations_router
@@ -72,6 +72,12 @@ async def client_work_sweep_loop():
             raise
         except Exception as e:
             logger.warning(f"Client work overdue sweep failed: {e}")
+        try:
+            await operations_service.send_due_reminders()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Operation reminder sweep failed: {e}")
         await asyncio.sleep(300)
 
 

@@ -468,7 +468,8 @@ def _client_view(kind: str, d: Dict[str, Any]) -> Dict[str, Any]:
                 "contact_name": "", "contact_email": "", "contact_phone": "", "gstin": "",
                 "bdm": d.get("bdm_name", ""), "services": d.get("services") or [], "documents": [],
                 "amount": d.get("amount_paid"), "status": d.get("status", "PENDING"), "pdf_available": bool(d.get("pdf_available")),
-                "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", "")}
+                "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", ""),
+                "operation_stage": d.get("operation_stage_label", "")}
     # Every field of a document form is optional: fall back to the contact's name for display.
     company = d.get("company_name") or d.get("name") or d.get("email") or "Unnamed client"
     return {"kind": kind, "id": str(d["_id"]), "reference": d.get("reference", ""), "company_name": company,
@@ -476,7 +477,8 @@ def _client_view(kind: str, d: Dict[str, Any]) -> Dict[str, Any]:
             "gstin": d.get("gst_number", ""), "bdm": d.get("submitted_by_name", ""), "services": [],
             "documents": sorted({f.get("label", "") for f in d.get("files") or []}),
             "amount": None, "status": d.get("status", "PENDING"),
-            "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", "")}
+            "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", ""),
+                "operation_stage": d.get("operation_stage_label", "")}
 
 
 async def _all_clients() -> List[Dict[str, Any]]:
