@@ -249,10 +249,12 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
                           className={`rounded-md border border-border bg-surface p-3 text-left shadow-[var(--shadow-card)] transition-colors hover:border-border-strong ${dragging === c.key ? 'opacity-50' : ''}`}
                         >
                           <span className="block truncate text-sm font-medium text-text">{c.company_name}</span>
-                          <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                            {c.legal_approved ? <StatusBadge status={c.legal_status} /> : <Badge tone="warning">Waiting for Legal</Badge>}
-                            {c.documents.length > 0 && <DocsReady />}
-                          </span>
+                          {(!c.legal_approved || c.documents.length > 0) && (
+                            <span className="mt-1.5 flex flex-wrap items-center gap-2">
+                              {!c.legal_approved && <Badge tone="warning">Waiting for Legal</Badge>}
+                              {c.documents.length > 0 && <DocsReady />}
+                            </span>
+                          )}
                           <span className="mt-2 flex items-center justify-between gap-2 text-xs">
                             <span className="inline-flex min-w-0 items-center gap-1 truncate text-text-muted">
                               <UserRound size={12} aria-hidden="true" />{c.assigned_to?.name ?? 'Unassigned'}
