@@ -112,22 +112,24 @@ export function OperationDashboard() {
 /** Each part of the Operation dashboard is one big picture tile on the home screen. */
 type Screen = View | 'stages' | 'reminders' | 'notifications' | 'services';
 const SCREENS: Screen[] = ['unassigned', 'mine', 'by_me', 'all', 'stages', 'reminders', 'notifications', 'services'];
+// Flat colours from the dashboards' app-launcher palette, picked so neighbouring tiles differ.
 const TILES: Record<Screen, { label: string; icon: LucideIcon; color: string }> = {
-  unassigned: { label: 'Unassigned', icon: Inbox, color: 'from-orange-400 to-orange-600' },
-  mine: { label: 'Assigned to me', icon: UserRoundCheck, color: 'from-sky-500 to-blue-700' },
-  by_me: { label: 'Assigned by me', icon: Send, color: 'from-violet-500 to-purple-700' },
-  all: { label: 'All cases', icon: FolderKanban, color: 'from-teal-400 to-teal-700' },
-  stages: { label: 'Stages', icon: Columns3, color: 'from-indigo-400 to-indigo-700' },
-  reminders: { label: 'Reminders', icon: AlarmClock, color: 'from-rose-500 to-red-700' },
-  notifications: { label: 'Notifications', icon: Bell, color: 'from-amber-400 to-amber-600' },
-  services: { label: 'Services', icon: Wrench, color: 'from-emerald-400 to-emerald-700' },
+  unassigned: { label: 'Unassigned', icon: Inbox, color: 'bg-[#D9822B]' },
+  mine: { label: 'Assigned to me', icon: UserRoundCheck, color: 'bg-[#2E86DE]' },
+  by_me: { label: 'Assigned by me', icon: Send, color: 'bg-[#6C4AB6]' },
+  all: { label: 'All cases', icon: FolderKanban, color: 'bg-[#1E8C7E]' },
+  stages: { label: 'Stages', icon: Columns3, color: 'bg-[#2C5F8A]' },
+  reminders: { label: 'Reminders', icon: AlarmClock, color: 'bg-[#C0392B]' },
+  notifications: { label: 'Notifications', icon: Bell, color: 'bg-[#B5485D]' },
+  services: { label: 'Services', icon: Wrench, color: 'bg-[#8E9F2E]' },
 };
 
 function TileIcon({ screen, size = 'lg' }: { screen: Screen; size?: 'lg' | 'sm' }) {
   const { icon: Icon, color } = TILES[screen];
   return (
-    <span className={`flex shrink-0 items-center justify-center bg-gradient-to-br shadow-md ring-1 ring-black/10 ${color} ${size === 'lg' ? 'h-16 w-16 rounded-2xl sm:h-20 sm:w-20' : 'h-9 w-9 rounded-xl'}`}>
-      <Icon size={size === 'lg' ? 34 : 18} strokeWidth={size === 'lg' ? 1.75 : 2} className="text-white drop-shadow" aria-hidden="true" />
+    <span className={`flex shrink-0 items-center justify-center text-white ${color} ${size === 'lg'
+      ? 'h-16 w-16 rounded-xl shadow-[0_6px_14px_rgba(0,0,0,0.35)] sm:h-[72px] sm:w-[72px]' : 'h-9 w-9 rounded-lg shadow-sm'}`}>
+      <Icon size={size === 'lg' ? 34 : 18} strokeWidth={2.2} aria-hidden="true" />
     </span>
   );
 }
@@ -207,16 +209,15 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className={embedded ? 'mb-6' : ''}>
-      {embedded && screen === 'home' && (
-        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-base font-semibold text-text">Operation dashboard</h2>
-          <Link to="/operations" className="text-xs font-medium text-primary hover:underline">Open full page</Link>
-        </div>
-      )}
-
       {screen === 'home' ? (
         <>
-          <div className="rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#1e3a8a] to-[#3730a3] p-4 shadow-[var(--shadow-card)] sm:p-6">
+          <div className="rounded-2xl bg-[linear-gradient(160deg,#1b1f5e_0%,#2a3a9c_45%,#4a5fd0_100%)] p-4 shadow-[var(--shadow-card)] sm:p-6">
+            {embedded && (
+              <div className="mb-3 flex flex-wrap items-end justify-between gap-2 text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]">
+                <h2 className="text-lg font-semibold">Operation dashboard</h2>
+                <Link to="/operations" className="text-xs font-medium text-white/85 hover:text-white hover:underline">Open full page</Link>
+              </div>
+            )}
             <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-white ring-1 ring-white/15 focus-within:ring-white/50">
               <Search size={17} aria-hidden="true" className="shrink-0 text-white/80" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search a client…" aria-label="Search clients"
@@ -224,15 +225,15 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
               {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="text-white/70 hover:text-white"><X size={16} /></button>}
             </label>
             {!searching && (
-              <div className="mt-6 grid grid-cols-3 gap-x-2 gap-y-5 sm:grid-cols-4 lg:grid-cols-6">
+              <div className="mt-6 grid grid-cols-3 gap-x-2 gap-y-5 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
                 {tiles.map((s) => (
                   <button key={s} type="button" onClick={() => go(s)}
-                    className="group flex flex-col items-center gap-2 rounded-xl p-2 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+                    className="group flex flex-col items-center gap-2 rounded-xl p-2 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
                     <span className="relative transition-transform group-hover:-translate-y-0.5">
                       <TileIcon screen={s} />
-                      {flags[s] && <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white ring-2 ring-white">{flags[s]}</span>}
+                      {flags[s] && <span className="absolute -right-2 -top-2 rounded-full bg-danger px-2 py-0.5 text-[11px] font-semibold text-white shadow">{flags[s]}</span>}
                     </span>
-                    <span className="text-center text-sm font-medium leading-tight text-white">{TILES[s].label}</span>
+                    <span className="text-center text-sm font-medium leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">{TILES[s].label}</span>
                   </button>
                 ))}
               </div>
