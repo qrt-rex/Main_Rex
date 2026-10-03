@@ -9,6 +9,7 @@ import { Table, type Column } from '../components/common/Table';
 import { dateTime, relativeTime } from '../lib/format';
 import { sections as navSections } from '../modules/registry';
 import { useAuth } from '../auth/AuthContext';
+import type { NavItem } from '../types';
 import type { FeedItem } from './api';
 
 /* Building blocks shared by every role dashboard. Which of them a dashboard renders is
@@ -16,8 +17,8 @@ import type { FeedItem } from './api';
 
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-3 mt-6 flex items-end justify-between gap-3 first:mt-0">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">{children}</h2>
+    <div className="mb-3 mt-8 flex items-end justify-between gap-3 first:mt-0">
+      <h2 className="text-lg font-semibold text-text">{children}</h2>
       {action}
     </div>
   );
@@ -241,29 +242,79 @@ export function TwoColumn({ main, side }: { main: ReactNode; side: ReactNode }) 
   );
 }
 
+export interface BigButtonItem {
+  label: string;
+  icon: LucideIcon;
+  /** In-app route. */
+  to?: string;
+  /** Opens outside the app, in a new tab. */
+  href?: string;
+  onClick?: () => void;
+  /** Short word shown when something is waiting here, e.g. "New". Never a count. */
+  flag?: string;
+  tone?: 'primary' | 'success' | 'warning' | 'info' | 'danger';
+}
+
+const bigTone = {
+  primary: 'bg-primary-soft text-primary',
+  success: 'bg-success-bg text-success',
+  warning: 'bg-warning-bg text-warning',
+  info: 'bg-info-bg text-info',
+  danger: 'bg-danger-bg text-danger',
+};
+
+/** Large picture buttons: one icon and one or two plain words each, so anyone can find their way. */
+export function BigButtons({ items }: { items: BigButtonItem[] }) {
+  if (items.length === 0) return null;
+  const cls = 'group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface p-4 text-center shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-pop)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      {items.map((b) => {
+        const Icon = b.icon;
+        const body = (
+          <>
+            {b.flag && <span className="absolute right-2 top-2 rounded-full bg-danger px-2 py-0.5 text-[11px] font-semibold text-white">{b.flag}</span>}
+            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${bigTone[b.tone ?? 'primary']}`}>
+              <Icon size={24} aria-hidden="true" />
+            </span>
+            <span className="text-sm font-semibold leading-tight text-text">{b.label}</span>
+          </>
+        );
+        if (b.href) return <a key={b.label} href={b.href} target="_blank" rel="noopener noreferrer" className={cls}>{body}</a>;
+        if (b.to) return <Link key={b.label} to={b.to} className={cls}>{body}</Link>;
+        return <button key={b.label} type="button" onClick={b.onClick} className={cls}>{body}</button>;
+      })}
+    </div>
+  );
+}
+
 /**
- * Entity cards for the modules this user may open, read straight from the nav registry
- * so a role never sees an area it has no permission for.
+ * Big buttons for the modules this user may open, read straight from the nav registry
+ * so a role never sees an area it has no permission for. Hidden modules never show.
+ * `grouped` lists every permitted module under its section name (for roles that see many).
  */
-export function ModuleEntities({ ids }: { ids?: string[] }) {
+export function ModuleEntities({ ids, grouped = false }: { ids?: string[]; grouped?: boolean }) {
   const { can } = useAuth();
-  const permitted = navSections.flatMap((s) => s.items).filter((i) => can(i.permission));
+  const allowed = (i: NavItem) => !i.hidden && !i.placeholder && can(i.permission);
+  const toButton = (i: NavItem): BigButtonItem => ({ label: i.label, icon: i.icon, to: i.path });
+
+  if (grouped && !ids) {
+    const groups = navSections.map((s) => ({ ...s, items: s.items.filter(allowed) })).filter((s) => s.items.length > 0);
+    return (
+      <div className="space-y-5">
+        {groups.map((g) => (
+          <div key={g.id}>
+            <h3 className="mb-2 text-sm font-semibold text-text-secondary">{g.label}</h3>
+            <BigButtons items={g.items.map(toButton)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const permitted = navSections.flatMap((s) => s.items).filter(allowed);
   const items = ids
     ? ids.map((id) => permitted.find((i) => i.id === id)).filter((i): i is NonNullable<typeof i> => !!i)
     : permitted;
-  if (items.length === 0) return null;
-  return (
-    <EntityGrid>
-      {items.map((i) => (
-        <EntityCard
-          key={i.id}
-          icon={i.icon}
-          title={i.label}
-          description={i.description ?? ''}
-          to={i.path}
-          badge={i.placeholder ? { label: 'Not configured', tone: 'neutral' } : undefined}
-        />
-      ))}
-    </EntityGrid>
-  );
+  return <BigButtons items={items.map(toButton)} />;
 }

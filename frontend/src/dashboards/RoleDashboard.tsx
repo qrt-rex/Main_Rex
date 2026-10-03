@@ -59,7 +59,7 @@ export function RoleDashboard() {
   return (
     <>
       <Body slug={slug} />
-      {slug !== 'legal' && can('clientwork.view') && <MemberWorkPanel queueOnly={slug === 'admin'} />}
+      {slug !== 'legal' && can('clientwork.view') && <MemberWorkPanel />}
       {slug !== 'legal' && <AssignedClientsCard />}
     </>
   );

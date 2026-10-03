@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Banknote, Briefcase, CalendarCheck, CalendarClock, DatabaseBackup, Download, FileText, GraduationCap,
+  Banknote, CalendarClock, DatabaseBackup, Download, FileText, GraduationCap,
   Upload, UserPlus, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../lib/useApi';
-import { dateTime, money, number } from '../../lib/format';
+import { dateTime, number } from '../../lib/format';
 import { exportExcel, parseAllSheets } from '../../lib/spreadsheet';
 import { saveBlob } from '../../lib/api';
 import { exportAll, getDashboardMetrics, importAll } from '../api';
@@ -18,7 +18,6 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { PageSkeleton } from '../../components/common/Skeleton';
 import { useToast } from '../../components/common/ToastContext';
 import { StatCard } from '../../components/dashboard/StatCard';
-import { HBarChart } from '../../components/charts/Charts';
 import { PageHeader } from '../../components/layout/PageHeader';
 
 function BackupMenu({ onRestored }: { onRestored: () => void }) {
@@ -95,7 +94,6 @@ export function HrDashboard() {
   if (status === 'error') return <><PageHeader title="HR overview" /><Card><ErrorState onRetry={reload} message={error} /></Card></>;
   if (!m) return <PageSkeleton />;
 
-  const pipeline = m.candidates_by_status.filter((s) => s.count > 0).map((s) => ({ label: s.status, value: s.count }));
   const actions = [
     { to: '/hr/employees/new', label: 'Add employee', icon: UserPlus, perm: 'hr.employees.create' },
     { to: '/hr/interns/new', label: 'Onboard intern', icon: GraduationCap, perm: 'hr.interns.create' },
@@ -108,7 +106,7 @@ export function HrDashboard() {
     <>
       <PageHeader
         title="HR overview"
-        description={`Workforce, attendance and payroll at a glance · ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+        description="Your people, today."
         breadcrumbs={[{ label: 'HR' }, { label: 'Overview' }]}
         actions={<>
           {can('hr.backup.manage') && <BackupMenu onRestored={reload} />}
@@ -120,21 +118,14 @@ export function HrDashboard() {
         </>}
       />
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard icon={UsersRound} label="Total workforce" to={can('hr.employees.view') ? '/hr/employees' : undefined} value={number(m.active_employees + m.active_interns)} hint={`${m.active_employees} employees · ${m.active_interns} interns`} />
-        <StatCard icon={CalendarClock} tone="success" label="Attendance today" to={can('hr.attendance.view') ? '/hr/attendance' : undefined} value={`${m.attendance_summary.present_count} present`} hint={`${m.attendance_summary.late_count} late · ${m.attendance_summary.half_day_count} half-day`} />
-        <StatCard icon={Briefcase} tone="info" label="Client hours today" to={can('hr.productivity.view') ? '/hr/productivity' : undefined} value={`${m.productivity_summary.billed_hours_today} h`} hint={`${m.productivity_summary.red_zone_blockers_count} active blockers · ${m.productivity_summary.active_projects_count} projects`} />
-        <StatCard icon={CalendarCheck} tone="warning" label="Pending leave" to={can('hr.leave.view') ? '/hr/leave' : undefined} value={number(m.leaves_summary.pending_requests_count)} hint={`${m.leaves_summary.on_leave_today_count} on leave today`} />
-        <StatCard icon={Banknote} tone="info" label="Net payroll disbursed" to={can('hr.payroll.view') ? '/hr/payslips' : undefined} value={money(m.total_payroll_processed)} hint={`${m.advances_summary.active_loans_count} active loans · ${m.advances_summary.active_advances_count} advances`} />
-        <StatCard icon={UserPlus} label="Recruitment pool" to={can('hr.recruitment.view') ? '/hr/recruitment' : undefined} value={number(m.total_candidates)} hint={`${m.pending_onboarding} pending onboarding`} />
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatCard icon={UsersRound} label="People working here" to={can('hr.employees.view') ? '/hr/employees' : undefined} value={number(m.active_employees + m.active_interns)} />
+        <StatCard icon={CalendarClock} tone="success" label="Here today" to={can('hr.attendance.view') ? '/hr/attendance' : undefined} value={number(m.attendance_summary.present_count)} />
+        <StatCard icon={UserPlus} label="Waiting to join" to={can('hr.recruitment.view') ? '/hr/recruitment' : undefined} value={number(m.pending_onboarding)} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
-          <Card>
-            <CardHeader title="Recruitment pipeline" description={`${m.hr_name}'s candidates: ${m.my_total_candidates} total · ${m.my_onboarding} selected or joined · ${m.my_pending_onboarding} awaiting onboarding`} />
-            <div className="p-4"><HBarChart data={pipeline} valueLabel="Candidates" slot={2} emptyText="No candidates in the pipeline yet" /></div>
-          </Card>
           <Card>
             <CardHeader title="Upcoming interviews" />
             {m.upcoming_interviews.length === 0 ? (

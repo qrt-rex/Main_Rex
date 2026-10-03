@@ -33,10 +33,10 @@ export function DashboardIntro({ title, subtitle, actions }: { title?: string; s
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-text">
+        <h1 className="text-2xl font-semibold tracking-tight text-text">
           {title ?? `${greeting()}, ${name}`}
         </h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <p className="mt-1 text-base text-text-muted">
           <span className="font-medium text-text-secondary">{user?.role_label}</span>
           <span aria-hidden="true"> · </span>
           {subtitle}

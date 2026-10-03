@@ -24,7 +24,7 @@ export const sections: NavSection[] = [
       { id: 'hr-attendance', label: 'Attendance', path: '/hr/attendance', icon: CalendarClock, permission: 'hr.attendance.view', description: 'Punch records and shift rules' },
       { id: 'hr-leave', label: 'Leave', path: '/hr/leave', icon: CalendarDays, permission: 'hr.leave.view', description: 'Leave requests, approvals and balances' },
       { id: 'hr-productivity', label: 'Productivity', path: '/hr/productivity', icon: Briefcase, permission: 'hr.productivity.view', description: 'Client tasks, timesheets and blockers' },
-      { id: 'hr-performance', label: 'Performance', path: '/hr/performance', icon: LineChart, permission: 'hr.performance.view', description: 'Individual and company scorecards' },
+      { id: 'hr-performance', label: 'Performance', path: '/hr/performance', icon: LineChart, permission: 'hr.performance.view', hidden: true, description: 'Individual and company scorecards' },
       { id: 'hr-payroll', label: 'Payroll', path: '/hr/payroll', icon: Banknote, permission: 'hr.payroll.view', description: 'Monthly payroll runs and approvals' },
       { id: 'hr-payslips', label: 'Payslips', path: '/hr/payslips', icon: FileText, permission: 'hr.payroll.view', description: 'Salary register and payslip generation' },
       { id: 'hr-pf', label: 'PF management', path: '/hr/pf', icon: PiggyBank, permission: 'hr.pf.view', description: 'PF dashboard, rules, employee PF details, PF payroll, reports and audit log' },
@@ -43,7 +43,7 @@ export const sections: NavSection[] = [
     description: 'Customers, pipeline and contacts',
     items: [
       { id: 'sales-hub', label: 'Sales workspace', path: '/sales/hub', icon: Target, permission: 'sales.hub.manage', description: 'Leads, schemes, material, team progress and attendance' },
-      { id: 'sales-scorecard', label: 'Scorecard', path: '/sales/scorecard', icon: Trophy, permission: 'sales.scorecard.view', description: 'Collection leaderboard, targets and my performance' },
+      { id: 'sales-scorecard', label: 'Scorecard', path: '/sales/scorecard', icon: Trophy, permission: 'sales.scorecard.view', hidden: true, description: 'Collection leaderboard, targets and my performance' },
       { id: 'sales-customers', label: 'Customers', path: '/sales/customers', icon: Users, permission: 'billing.view', description: 'Customers converted from leads' },
       { id: 'sales-leads', label: 'Leads', path: '/sales/leads', icon: Target, permission: 'sales.leads.view', description: 'Your leads, and converting them to customers' },
       { id: 'sales-deals', label: 'Deals', path: '/sales/deals', icon: Handshake, permission: 'sales.deals.view', description: 'Your invoices and how much has been collected' },
@@ -133,9 +133,9 @@ export const navItem = (id: string): NavItem => {
   return item;
 };
 
-/** Sections as a given user sees them: unauthorized items removed, empty sections dropped. */
+/** Sections as a given user sees them: unauthorized and hidden items removed, empty sections dropped. */
 export function visibleSections(can: (permission: string) => boolean): NavSection[] {
   return sections
-    .map((s) => ({ ...s, items: s.items.filter((i) => can(i.permission)) }))
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.hidden && can(i.permission)) }))
     .filter((s) => s.items.length > 0);
 }

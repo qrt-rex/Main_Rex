@@ -395,7 +395,7 @@ export function LeadsCard({
   const today = todayISO();
   return (
     <Card>
-      <CardHeader title="Your leads to call" description={`${open.length} open · ${leads.length} assigned to you`}
+      <CardHeader title="Your leads to call" description="Call these people"
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => setAddLeadOpen(true)}><Plus size={14} /> Add lead</Button>
@@ -490,7 +490,7 @@ export function SchemesCard({ schemes, onChanged, canManage = false }: { schemes
     <Card className="flex flex-col h-full">
       <CardHeader
         title="Current Schemes & Offers"
-        description={`${schemes.length} active client discount & bundle schemes`}
+        description="Offers you can give clients"
         actions={canManage && (
           <Button size="sm" onClick={() => { setEditingScheme(null); setModalOpen(true); }}>
             <Plus size={14} /> Add scheme
@@ -596,7 +596,7 @@ export function FlyersPostsCard({ materials, onChanged, canManage = false }: { m
     <Card className="flex flex-col h-full">
       <CardHeader
         title="Flyers & Social Posts"
-        description={`${items.length} marketing posters, social graphics & brochures`}
+        description="Pictures to send to clients"
         actions={canManage && (
           <Button size="sm" onClick={() => setModalOpen(true)}>
             <Plus size={14} /> Add flyer / post
@@ -734,7 +734,7 @@ export function SalesInfoCard({ materials, onChanged, canManage = false }: { mat
     <Card className="flex flex-col h-full">
       <CardHeader
         title="Sales Information & FAQs"
-        description={`${items.length} pricing sheets, pitches & product knowledge`}
+        description="Prices and answers to common questions"
         actions={canManage && (
           <Button size="sm" onClick={() => { setEditingInfo(null); setModalOpen(true); }}>
             <Plus size={14} /> Add sales info
