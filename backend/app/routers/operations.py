@@ -198,13 +198,13 @@ async def _save(key: str, kind: str, item_id: str, row: Optional[Dict[str, Any]]
 
 @router.get("/board")
 async def board(
-    view: str = Query("unassigned", description="unassigned, mine (assigned to me), by_me (assigned by me) or all"),
+    view: str = Query("unassigned", description="unassigned, mine (assigned to me), by_me (assigned by me) or all (every case you may see)"),
     search: Optional[str] = Query(None),
     with_documents: bool = Query(False, description="only cases that have a document from Legal"),
     admin: Dict[str, Any] = Depends(get_current_admin),
 ):
     manage, me = await _can_manage(admin), _uid(admin)
-    if view not in VIEWS or (view == "all" and not manage):
+    if view not in VIEWS:
         view = "unassigned"
     clients = await _all_clients()
     raws = await _raw_clients()
@@ -228,7 +228,8 @@ async def board(
     if with_documents:
         cases = [x for x in cases if x["documents"]]
 
-    views = {v: sum(1 for x in cases if _in_view(x, v, me)) for v in VIEWS if v != "all" or manage}
+    cases = [x for x in cases if _may_see(x, me, manage)]
+    views = {v: sum(1 for x in cases if _in_view(x, v, me)) for v in VIEWS}
     # Newest Legal approval first; clients still waiting for Legal after them, newest first.
     cases = sorted((x for x in cases if _in_view(x, view, me)), key=lambda x: (x["legal_approved_at"], x["created_at"]), reverse=True)
     counts = {s["key"]: 0 for s in STAGES}
@@ -289,7 +290,8 @@ async def move_case(kind: str, item_id: str, req: StageMove, admin: Dict[str, An
         "operation_stage": req.stage, "operation_stage_label": STAGE_LABELS[req.stage], "operation_stage_at": at}})
     assignee = (case.get("assigned_to") or {}).get("user_id")
     if assignee and assignee != me["user_id"]:
-        await ops.notify(assignee, f"{case['company_name']} moved to {STAGE_LABELS[req.stage]}", f"By {me['name']}" + (f": {req.note.strip()}" if req.note.strip() else ""))
+        await ops.notify(assignee, f"{case['company_name']} moved to {STAGE_LABELS[req.stage]}", f"By {me['name']}" + (f": {req.note.strip()}" if req.note.strip() else ""),
+                         link=ops.LINK_MINE)
     return await _build_case(kind, item_id, admin)
 
 
@@ -329,12 +331,13 @@ async def assign_case(kind: str, item_id: str, req: AssignCase, admin: Dict[str,
     if same:
         if assigned and assigned["user_id"] != me["user_id"]:
             await ops.notify(assigned["user_id"], f"{case['company_name']}: you may now take it up to {STAGE_LABELS[limit] if limit else 'any stage'}",
-                             f"Changed by {me['name']}")
+                             f"Changed by {me['name']}", link=ops.LINK_MINE)
         return await _build_case(kind, item_id, admin)
     upto = f" · up to {STAGE_LABELS[limit]}" if limit else ""
     if assigned and assigned["user_id"] != me["user_id"]:
         title = f"Client case assigned to you: {case['company_name']}"
-        await ops.notify(assigned["user_id"], title, f"By {me['name']} · stage {case['stage_label']}{upto}" + (f" · {req.note.strip()}" if req.note.strip() else ""))
+        await ops.notify(assigned["user_id"], title, f"By {me['name']} · stage {case['stage_label']}{upto}" + (f" · {req.note.strip()}" if req.note.strip() else ""),
+                         link=ops.LINK_MINE)
         await ops.email(assigned["email"], title,
                         f"<p>Dear {escape(assigned['name'])},</p><p>{escape(me['name'])} assigned the client "
                         f"<b>{escape(case['company_name'])}</b> ({escape(case['reference'])}) to you on the Operation dashboard.</p>"
@@ -404,7 +407,8 @@ async def add_reminder(kind: str, item_id: str, req: ReminderCreate, admin: Dict
            "related": {"kind": ops.CASE_KIND, "id": case["key"], "label": case["company_name"]}}
     await get_collection("crm_activities").insert_one(dict(row))
     if owner["user_id"] != me["user_id"]:
-        await ops.notify(owner["user_id"], f"{me['name']} set you a {what.lower()} reminder: {case['company_name']}", req.note.strip())
+        await ops.notify(owner["user_id"], f"{me['name']} set you a {what.lower()} reminder: {case['company_name']}", req.note.strip(),
+                         link=ops.LINK_REMINDERS)
     return _reminder_view(row)
 
 

@@ -23,6 +23,9 @@ logger = logging.getLogger("rexera.operations")
 CASE_KIND = "operation_case"
 REMINDER_TYPES = {"CALL": "Call", "EMAIL": "Email"}
 LINK = "/operations"
+# Open the Operation dashboard straight on a tile.
+LINK_MINE = "/operations?show=mine"
+LINK_REMINDERS = "/operations?show=reminders"
 
 
 def now_iso() -> str:
@@ -69,13 +72,13 @@ async def send_due_reminders(now: Optional[datetime] = None) -> int:
         what = REMINDER_TYPES.get(r.get("type"), "Follow up")
         client = (r.get("related") or {}).get("label") or "the client"
         title = f"{what} reminder: {client}"
-        await notify(owner.get("user_id", ""), title, r.get("body") or r.get("subject") or "")
+        await notify(owner.get("user_id", ""), title, r.get("body") or r.get("subject") or "", link=LINK_REMINDERS)
         verb = "call" if r.get("type") == "CALL" else "email"
         await email(owner.get("email", ""), title,
                     f"<p>Dear {escape(owner.get('name') or 'colleague')},</p>"
                     f"<p>This is your reminder to {verb} <b>{escape(client)}</b> for further inquiry and follow-up.</p>"
                     + (f"<p>Note: {escape(r.get('body') or '')}</p>" if r.get("body") else "")
-                    + "<p>Open the Operation dashboard in Rex CRM to see the case and mark the reminder done.</p>")
+                    + "<p>Open the Reminders tile on the Operation dashboard in Rex CRM to see the case and mark the reminder done.</p>")
         await get_collection("crm_activities").update_one({"_id": r["_id"]}, {"$set": {"reminder_sent_at": now_iso()}})
         sent += 1
     return sent

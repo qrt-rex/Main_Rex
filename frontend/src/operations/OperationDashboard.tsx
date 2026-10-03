@@ -1,8 +1,8 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlarmClock, ArrowRight, Bell, Briefcase, Check, ChevronDown, CircleCheck, Columns3, Download, Eye, FileText, History,
-  LayoutGrid, Mail, Pencil, Phone, Plus, ShieldAlert, Trash2, UserRound, UserRoundCheck, Wrench,
+  AlarmClock, ArrowLeft, ArrowRight, Bell, Briefcase, Check, ChevronDown, CircleCheck, Columns3, Download, Eye, FileText, FolderKanban,
+  History, Inbox, Mail, Pencil, Phone, Plus, Search, Send, ShieldAlert, Trash2, UserRound, UserRoundCheck, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { api, saveBlob } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
@@ -15,10 +15,9 @@ import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { Input, SearchInput, Select, Textarea } from '../components/common/Input';
+import { Input, Select, Textarea } from '../components/common/Input';
 import { Drawer } from '../components/common/Modal';
 import { Skeleton } from '../components/common/Skeleton';
-import { Tabs } from '../components/common/Tabs';
 import { useToast } from '../components/common/ToastContext';
 import { useConfirm } from '../components/common/ConfirmDialog';
 
@@ -50,7 +49,6 @@ interface Board {
 
 interface Service { id: string; name: string }
 
-const VIEW_LABELS: Record<View, string> = { unassigned: 'Unassigned', mine: 'Assigned to me', by_me: 'Assigned by me', all: 'All cases' };
 const SECTION_TITLES: Record<View, string> = {
   unassigned: 'Unassigned CRM Entries', mine: 'My Assigned CRM Entries', by_me: 'CRM Entries I Assigned', all: 'All CRM Entries',
 };
@@ -111,27 +109,57 @@ export function OperationDashboard() {
   );
 }
 
+/** Each part of the Operation dashboard is one big picture tile on the home screen. */
+type Screen = View | 'stages' | 'reminders' | 'notifications' | 'services';
+const SCREENS: Screen[] = ['unassigned', 'mine', 'by_me', 'all', 'stages', 'reminders', 'notifications', 'services'];
+const TILES: Record<Screen, { label: string; icon: LucideIcon; color: string }> = {
+  unassigned: { label: 'Unassigned', icon: Inbox, color: 'from-orange-400 to-orange-600' },
+  mine: { label: 'Assigned to me', icon: UserRoundCheck, color: 'from-sky-500 to-blue-700' },
+  by_me: { label: 'Assigned by me', icon: Send, color: 'from-violet-500 to-purple-700' },
+  all: { label: 'All cases', icon: FolderKanban, color: 'from-teal-400 to-teal-700' },
+  stages: { label: 'Stages', icon: Columns3, color: 'from-indigo-400 to-indigo-700' },
+  reminders: { label: 'Reminders', icon: AlarmClock, color: 'from-rose-500 to-red-700' },
+  notifications: { label: 'Notifications', icon: Bell, color: 'from-amber-400 to-amber-600' },
+  services: { label: 'Services', icon: Wrench, color: 'from-emerald-400 to-emerald-700' },
+};
+
+function TileIcon({ screen, size = 'lg' }: { screen: Screen; size?: 'lg' | 'sm' }) {
+  const { icon: Icon, color } = TILES[screen];
+  return (
+    <span className={`flex shrink-0 items-center justify-center bg-gradient-to-br shadow-md ring-1 ring-black/10 ${color} ${size === 'lg' ? 'h-16 w-16 rounded-2xl sm:h-20 sm:w-20' : 'h-9 w-9 rounded-xl'}`}>
+      <Icon size={size === 'lg' ? 34 : 18} strokeWidth={size === 'lg' ? 1.75 : 2} className="text-white drop-shadow" aria-hidden="true" />
+    </span>
+  );
+}
+
 /**
- * The Operation dashboard: unassigned cases first, then the ones assigned to you or by you (managers also see all),
- * your call and email reminders, and your notifications. Also shown on the Admin dashboard.
+ * The Operation dashboard. Its home screen is a search bar over a grid of big tiles: unassigned cases first, then the
+ * ones assigned to you or by you (managers also get all cases and the services list), the stage board, your call and
+ * email reminders, and your notifications. Also shown on the Admin dashboard.
  */
 export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
   const { showToast } = useToast();
-  const [tab, setTab] = useState<View | 'reminders' | 'notifications'>('unassigned');
+  const { can } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const [localScreen, setLocalScreen] = useState<Screen | 'home'>('home');
+  const asked = params.get('show') as Screen | null;
+  // On its own page the open tile lives in the address, so the browser's Back button returns to the tiles.
+  const screen: Screen | 'home' = embedded ? localScreen : asked && SCREENS.includes(asked) ? asked : 'home';
+  const go = (s: Screen | 'home') => (embedded ? setLocalScreen(s) : setParams(s === 'home' ? {} : { show: s }));
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Pick<OpsCase, 'kind' | 'id' | 'key'> | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [layout, setLayout] = useState<'entries' | 'board'>('entries');
-  const q = useDebounced(search);
+  const q = useDebounced(search).trim();
+  const searching = screen === 'home' && q !== '';
+  const manage = can('operations.dashboard.manage');
   const admins = useApi(() => api.get<{ items: Person[] }>('/api/operations/assignees'), []);
   const services = useApi(() => api.get<{ items: Service[] }>('/api/operations/services'), []);
-  const view: View = tab === 'reminders' || tab === 'notifications' ? 'unassigned' : tab;
-  const board = useApi(() => api.get<Board>('/api/operations/board', { view, search: q }), [view, q]);
+  const view: View = screen === 'unassigned' || screen === 'mine' || screen === 'by_me' ? screen : 'all';
+  const board = useApi(() => api.get<Board>('/api/operations/board', { view, search: searching ? q : '' }), [view, searching ? q : '']);
   const reminders = useApi(() => api.get<{ items: Reminder[] }>('/api/operations/reminders'), []);
   const notifications = useNotifications();
   const data = board.data;
   const myReminders = reminders.data?.items ?? [];
-  const due = myReminders.filter(overdue).length;
   const reload = () => { board.reload(); reminders.reload(); };
 
   const move = async (c: Pick<OpsCase, 'kind' | 'id' | 'company_name'>, stage: string, note = '') => {
@@ -153,73 +181,89 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
     if (c && c.stage !== stage) move(c, stage);
   };
 
-  const views = (['unassigned', 'mine', 'by_me', 'all'] as View[]).filter((v) => v !== 'all' || data?.can_manage);
-  const tabs = [
-    ...views.map((v) => ({ id: v, label: VIEW_LABELS[v] })),
-    { id: 'reminders', label: 'My reminders' },
-    { id: 'notifications', label: notifications.unreadCount ? <>Notifications <span className="h-2 w-2 rounded-full bg-primary" aria-label="new" /></> : 'Notifications' },
-  ];
+  const flags: Partial<Record<Screen, string>> = {
+    reminders: myReminders.some(overdue) ? 'Due' : undefined,
+    notifications: notifications.unreadCount ? 'New' : undefined,
+  };
+  const tiles = SCREENS.filter((s) => (s !== 'all' && s !== 'services') || manage);
+
+  const entries = (title: string, empty = 'No entries found.') => (
+    board.status === 'error' ? <Card><ErrorState onRetry={board.reload} message={board.error} /></Card>
+      : !data ? <Skeleton className="h-64 w-full" />
+        : (
+          <Section icon={UserRoundCheck} title={`${title} (Newest legal approval first)`}>
+            {data.total === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-surface py-8 text-center text-sm text-text-muted">{empty}</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {data.cases.map((c) => (
+                  <EntryCard key={c.key} c={c} stages={data.stages} admins={admins.data?.items ?? []} onView={() => setOpen(c)} onChanged={reload} />
+                ))}
+              </div>
+            )}
+          </Section>
+        )
+  );
 
   return (
     <div className={embedded ? 'mb-6' : ''}>
-      {embedded && (
+      {embedded && screen === 'home' && (
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold text-text">Operation dashboard</h2>
-            <p className="text-xs text-text-muted">Client cases by stage, with the documents Legal provided or approved.</p>
-          </div>
+          <h2 className="text-base font-semibold text-text">Operation dashboard</h2>
           <Link to="/operations" className="text-xs font-medium text-primary hover:underline">Open full page</Link>
         </div>
       )}
-      <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id as typeof tab)} className="mb-4" />
 
-      {tab === 'reminders' ? (
-        <RemindersList items={myReminders} loading={reminders.loading} error={reminders.status === 'error' ? reminders.error : ''}
-          onOpen={(r) => setOpen({ ...fromKey(r.case_key), key: r.case_key })} onChanged={reload} />
-      ) : tab === 'notifications' ? (
-        <NotificationsList />
+      {screen === 'home' ? (
+        <>
+          <div className="rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#1e3a8a] to-[#3730a3] p-4 shadow-[var(--shadow-card)] sm:p-6">
+            <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-white ring-1 ring-white/15 focus-within:ring-white/50">
+              <Search size={17} aria-hidden="true" className="shrink-0 text-white/80" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search a client…" aria-label="Search clients"
+                className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/60" />
+              {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="text-white/70 hover:text-white"><X size={16} /></button>}
+            </label>
+            {!searching && (
+              <div className="mt-6 grid grid-cols-3 gap-x-2 gap-y-5 sm:grid-cols-4 lg:grid-cols-6">
+                {tiles.map((s) => (
+                  <button key={s} type="button" onClick={() => go(s)}
+                    className="group flex flex-col items-center gap-2 rounded-xl p-2 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+                    <span className="relative transition-transform group-hover:-translate-y-0.5">
+                      <TileIcon screen={s} />
+                      {flags[s] && <span className="absolute -right-2 -top-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white ring-2 ring-white">{flags[s]}</span>}
+                    </span>
+                    <span className="text-center text-sm font-medium leading-tight text-white">{TILES[s].label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {searching && <div className="mt-4">{entries('Clients found', 'No client matches that search.')}</div>}
+        </>
       ) : (
         <>
-          {due > 0 && (
-            <button type="button" onClick={() => setTab('reminders')}
-              className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-bg px-4 py-3 text-left text-sm text-danger">
-              <span className="flex items-center gap-2 font-medium"><AlarmClock size={16} aria-hidden="true" />Time to follow up: a call or email reminder is due.</span>
-              <span className="shrink-0 font-semibold">See reminders</span>
-            </button>
-          )}
+          <div className="mb-4 flex items-center gap-3">
+            <Button variant="secondary" onClick={() => go('home')}><ArrowLeft size={16} /> Back</Button>
+            <TileIcon screen={screen} size="sm" />
+            <h2 className="text-lg font-semibold text-text">{TILES[screen].label}</h2>
+          </div>
 
-          <Card className="mb-4 flex flex-wrap items-center gap-3 p-3">
-            <SearchInput value={search} onChange={setSearch} label="Search clients" placeholder="Search a client…" />
-            <div className="ml-auto flex rounded-md border border-border p-0.5" role="group" aria-label="Layout">
-              {([['entries', 'Cards', LayoutGrid], ['board', 'Stages', Columns3]] as const).map(([id, label, Icon]) => (
-                <button key={id} type="button" aria-pressed={layout === id} onClick={() => setLayout(id)}
-                  className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium ${layout === id ? 'bg-primary-soft text-primary' : 'text-text-muted hover:text-text'}`}>
-                  <Icon size={13} aria-hidden="true" />{label}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          {board.status === 'error' ? (
+          {screen === 'reminders' ? (
+            <RemindersList items={myReminders} loading={reminders.loading} error={reminders.status === 'error' ? reminders.error : ''}
+              onOpen={(r) => setOpen({ ...fromKey(r.case_key), key: r.case_key })} onChanged={reload} />
+          ) : screen === 'notifications' ? (
+            <NotificationsList />
+          ) : screen === 'services' ? (
+            <ManageServices items={services.data?.items ?? []} loading={services.loading} onChanged={services.reload} />
+          ) : screen !== 'stages' ? (
+            entries(SECTION_TITLES[view])
+          ) : board.status === 'error' ? (
             <Card><ErrorState onRetry={board.reload} message={board.error} /></Card>
           ) : !data ? (
             <div className="flex gap-3 overflow-hidden">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-72 w-72 shrink-0" />)}</div>
-          ) : layout === 'entries' ? (
-            <Section icon={UserRoundCheck} title={`${SECTION_TITLES[view]} (Newest legal approval first)`}>
-              {data.total === 0 ? (
-                <p className="rounded-lg border border-dashed border-border bg-surface py-8 text-center text-sm text-text-muted">No entries found.</p>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {data.cases.map((c) => (
-                    <EntryCard key={c.key} c={c} stages={data.stages} admins={admins.data?.items ?? []} onView={() => setOpen(c)} onChanged={reload} />
-                  ))}
-                </div>
-              )}
-            </Section>
           ) : data.total === 0 ? (
             <Card>
-              <EmptyState icon={Briefcase} title={view === 'unassigned' ? 'No unassigned cases' : `Nothing ${VIEW_LABELS[view].toLowerCase()}`}
-                description={view === 'unassigned' ? 'Clients added in the Legal module appear here, starting at Onboarding.' : 'Assign a case from the Unassigned tab.'} />
+              <EmptyState icon={Briefcase} title="No cases yet" description="Clients added in the Legal module appear here, starting at Onboarding." />
             </Card>
           ) : (
             <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3">
@@ -270,10 +314,6 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
             </div>
           )}
         </>
-      )}
-
-      {data?.can_manage && tab !== 'reminders' && tab !== 'notifications' && (
-        <ManageServices items={services.data?.items ?? []} loading={services.loading} onChanged={services.reload} />
       )}
 
       {open && data && (
@@ -379,7 +419,7 @@ function ManageServices({ items, loading, onChanged }: { items: Service[]; loadi
   };
 
   return (
-    <Section icon={Wrench} title="Manage Services" defaultOpen={false}>
+    <Section icon={Wrench} title="Manage Services">
       <form className="mb-3 flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); if (name.trim()) add(); }}>
         <Input aria-label="New service name" placeholder="New Service Name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="flex-1" />
         <Button type="submit" className="justify-center bg-emerald-600 text-white hover:bg-emerald-700 sm:w-56" loading={busy === 'add'} disabled={!name.trim()}>

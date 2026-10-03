@@ -71,7 +71,7 @@ def test_board_starts_every_client_at_onboarding_unassigned(client, store, peopl
                                                  "Approval", "Submission", "Meeting-1", "Selection"]
     assert b["view"] == "unassigned" and b["total"] == 2 and b["stages"][0]["count"] == 2
     assert b["awaiting_legal"] == 1 and b["can_manage"] is False
-    assert b["views"] == {"unassigned": 2, "mine": 0, "by_me": 0}
+    assert b["views"] == {"unassigned": 2, "mine": 0, "by_me": 0, "all": 2}
     assert {c["stage"] for c in b["cases"]} == {"ONBOARDING"}
     assert board(client, people, "support")["views"]["all"] == 2
 
@@ -115,13 +115,15 @@ def test_assignment_lists_admins_and_hides_the_case_from_other_admins(client, st
     # another admin no longer sees it anywhere, nor can open it
     other = user(client, people["super"][1], store, "third@rex.test", "admin")[1]
     assert client.get(f"{API}/board", headers=other).json()["total"] == 0
+    assert client.get(f"{API}/board", params={"view": "all"}, headers=other).json()["total"] == 0
+    assert board(client, people, "anita", view="all")["total"] == 1  # she assigned it
     assert client.get(f"{API}/cases/record/{cid}", headers=other).status_code == 404
     # managers see everything
     assert board(client, people, "support", view="all")["total"] == 1
 
     # the assignee hears about it, in the app and in the bell
     feed = client.get("/api/notifications", headers=H(people, "rahul")).json()["items"]
-    assert any("assigned to you" in i["title"] for i in feed)
+    assert any("assigned to you" in i["title"] and i["link"] == "/operations?show=mine" for i in feed)
 
     # only an Admin can be picked; a stranger can't reassign
     bad = client.put(f"{API}/cases/record/{cid}/assign", json={"user_id": uid(people, "sales")}, headers=H(people, "anita"))
@@ -208,8 +210,8 @@ def test_access_follows_roles(client, store, people):
         assert client.put(f"{API}/cases/record/{cid}/stage", json={"stage": "APPROVAL"}, headers=H(people, role)).status_code == 403
     for who in ("legal", "support", "anita", "super"):
         assert client.get(f"{API}/board", headers=H(people, who)).status_code == 200
-    # Admins can't ask for every case; they get the unassigned view instead
-    assert board(client, people, "anita", view="all")["view"] == "unassigned"
+    # an unknown view falls back to the unassigned one
+    assert board(client, people, "anita", view="everything")["view"] == "unassigned"
 
 
 def test_search(client, store, people):
