@@ -19,6 +19,8 @@ import { useToast } from '../components/common/ToastContext';
 import { LegalClientDocuments } from './LegalClientDocuments';
 import { LegalApprovals, LegalAssignClients } from './LegalClients';
 import { LegalExportButton, LegalImportButton, LegalOverview } from './LegalDataTools';
+import { BigButtons, LauncherSearch } from './components';
+import { useOnLauncher } from './launcher';
 
 type LegalSection = 'records' | 'documents' | 'assign' | 'monitoring' | 'approvals';
 const LEGAL_SECTIONS: { id: LegalSection; label: string; description: string; icon: typeof Scale; permission?: string }[] = [
@@ -53,6 +55,7 @@ interface ApiResponse {
 export function LegalDashboard() {
   const { showToast } = useToast();
   const { can } = useAuth();
+  const onLauncher = useOnLauncher();
   // Bumped after an import so the overview tiles re-count.
   const [dataVersion, setDataVersion] = useState(0);
   // The open section lives in the URL (?section=…) so it survives a refresh and can be linked.
@@ -199,9 +202,19 @@ export function LegalDashboard() {
     // The app header already shows the account and sign-out, so this page has no header bar of its own.
     <div className="text-slate-900 dark:text-slate-100 pb-16 font-sans">
       <div className="max-w-7xl mx-auto">
-       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[210px_minmax(0,1fr)]">
+       {onLauncher && <>
+        <LauncherSearch />
+        {/* On the dashboard every Legal area is an app icon; the open one has a white ring. */}
+        <div className="mb-8">
+          <BigButtons items={[
+            ...sections.map(({ id, label, icon }) => ({ label, icon, onClick: () => setSection(id), active: section === id })),
+            ...(can('sales.hub.manage') ? [{ label: 'Sales workspace', icon: Target, to: '/sales/hub' }] : []),
+          ]} />
+        </div>
+       </>}
+       <div className={`grid grid-cols-1 gap-6 ${onLauncher ? '' : 'lg:grid-cols-[210px_minmax(0,1fr)]'}`}>
         {/* Section sidebar */}
-        <nav aria-label="Legal sections" className="min-w-0 self-start lg:sticky lg:top-24">
+        {!onLauncher && <nav aria-label="Legal sections" className="min-w-0 self-start lg:sticky lg:top-24">
           <ul className="flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-col">
             {sections.map(({ id, label, icon: Icon }) => (
               <li key={id} className="shrink-0">
@@ -229,14 +242,14 @@ export function LegalDashboard() {
               </li>
             )}
           </ul>
-        </nav>
+        </nav>}
 
         <div className="min-w-0 space-y-6">
         {/* Title + Stats Counter Row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{LEGAL_SECTIONS.find((s) => s.id === section)?.label}</h2>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            <h2 className={`text-2xl font-bold tracking-tight ${onLauncher ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{LEGAL_SECTIONS.find((s) => s.id === section)?.label}</h2>
+            <p className={`text-xs sm:text-sm mt-0.5 ${onLauncher ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
               {LEGAL_SECTIONS.find((s) => s.id === section)?.description}
             </p>
           </div>

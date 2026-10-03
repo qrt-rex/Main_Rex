@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Badge, StatusBadge, type BadgeTone } from '../components/common/Badge';
 import { Card, CardHeader } from '../components/common/Card';
@@ -18,8 +18,8 @@ import type { FeedItem } from './api';
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 mt-8 flex items-end justify-between gap-3 first:mt-0">
-      <h2 className="text-lg font-semibold text-text">{children}</h2>
-      {action}
+      <h2 className="text-lg font-semibold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]">{children}</h2>
+      {action && <div className="text-white [&_a]:!text-white">{action}</div>}
     </div>
   );
 }
@@ -253,37 +253,93 @@ export interface BigButtonItem {
   /** Short word shown when something is waiting here, e.g. "New". Never a count. */
   flag?: string;
   tone?: 'primary' | 'success' | 'warning' | 'info' | 'danger';
+  /** The app currently open, when the icons switch views on the same page. */
+  active?: boolean;
 }
 
-const bigTone = {
-  primary: 'bg-primary-soft text-primary',
-  success: 'bg-success-bg text-success',
-  warning: 'bg-warning-bg text-warning',
-  info: 'bg-info-bg text-info',
-  danger: 'bg-danger-bg text-danger',
+/* App-launcher tiles, like a phone home screen: a bold square of colour with a white symbol and one name under it. */
+const TILE_COLORS = [
+  'bg-[#B5485D]', // rose
+  'bg-[#1F3A6B]', // navy
+  'bg-[#D9822B]', // orange
+  'bg-[#A13D3D]', // brick
+  'bg-[#2C5F8A]', // steel blue
+  'bg-[#5B3A29]', // brown
+  'bg-[#2E86DE]', // bright blue
+  'bg-[#2D3436]', // charcoal
+  'bg-[#1E8C7E]', // teal
+  'bg-[#8E9F2E]', // olive
+  'bg-[#6C4AB6]', // purple
+  'bg-[#C0392B]', // red
+];
+const TONE_COLORS = {
+  primary: 'bg-[#4F46E5]',
+  success: 'bg-[#1E8C7E]',
+  warning: 'bg-[#D9822B]',
+  info: 'bg-[#2E86DE]',
+  danger: 'bg-[#C0392B]',
 };
 
-/** Large picture buttons: one icon and one or two plain words each, so anyone can find their way. */
+/** Same name, same colour, on every dashboard. */
+function tileColor(b: BigButtonItem) {
+  if (b.tone) return TONE_COLORS[b.tone];
+  let h = 0;
+  for (const ch of b.label) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TILE_COLORS[h % TILE_COLORS.length];
+}
+
+/** The home-screen grid: big coloured app icons with a plain name under each. Sits on the blue dashboard backdrop. */
 export function BigButtons({ items }: { items: BigButtonItem[] }) {
   if (items.length === 0) return null;
-  const cls = 'group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface p-4 text-center shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-pop)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  const cls = 'group relative flex flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white';
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+    <div className="grid grid-cols-3 gap-x-2 gap-y-5 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
       {items.map((b) => {
         const Icon = b.icon;
         const body = (
           <>
-            {b.flag && <span className="absolute right-2 top-2 rounded-full bg-danger px-2 py-0.5 text-[11px] font-semibold text-white">{b.flag}</span>}
-            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${bigTone[b.tone ?? 'primary']}`}>
-              <Icon size={24} aria-hidden="true" />
+            <span className={`relative flex h-16 w-16 items-center justify-center rounded-xl text-white shadow-[0_6px_14px_rgba(0,0,0,0.35)] transition-transform group-hover:-translate-y-0.5 sm:h-[72px] sm:w-[72px] ${tileColor(b)} ${b.active ? 'ring-4 ring-white' : ''}`}>
+              <Icon size={34} strokeWidth={2.2} aria-hidden="true" />
+              {b.flag && <span className="absolute -right-2 -top-2 rounded-full bg-danger px-2 py-0.5 text-[11px] font-semibold text-white shadow">{b.flag}</span>}
             </span>
-            <span className="text-sm font-semibold leading-tight text-text">{b.label}</span>
+            <span className="text-sm font-medium leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">{b.label}</span>
           </>
         );
         if (b.href) return <a key={b.label} href={b.href} target="_blank" rel="noopener noreferrer" className={cls}>{body}</a>;
         if (b.to) return <Link key={b.label} to={b.to} className={cls}>{body}</Link>;
-        return <button key={b.label} type="button" onClick={b.onClick} className={cls}>{body}</button>;
+        return <button key={b.label} type="button" onClick={b.onClick} aria-pressed={b.active} className={`${cls} ${b.active ? 'bg-white/10' : ''}`}>{body}</button>;
       })}
+    </div>
+  );
+}
+
+/** "Search menus…": type a word and the matching app icons appear. */
+export function LauncherSearch() {
+  const { can } = useAuth();
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const found = q
+    ? navSections.flatMap((s) => s.items).filter((i) => !i.hidden && !i.placeholder && can(i.permission) && `${i.label} ${i.description ?? ''}`.toLowerCase().includes(q))
+    : [];
+  return (
+    <div className="mb-8">
+      <label className="flex h-11 items-center gap-3 rounded-lg bg-white/10 px-4 text-white ring-1 ring-white/20 focus-within:bg-white/15 focus-within:ring-white/50">
+        <Search size={18} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search menus..."
+          aria-label="Search menus"
+          className="h-full w-full bg-transparent text-sm text-white placeholder:text-white/60 focus:outline-none"
+        />
+      </label>
+      {q && (
+        <div className="mt-5">
+          {found.length > 0
+            ? <BigButtons items={found.map((i) => ({ label: i.label, icon: i.icon, to: i.path }))} />
+            : <p className="text-sm text-white/80">Nothing found. Try another word.</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -304,7 +360,7 @@ export function ModuleEntities({ ids, grouped = false }: { ids?: string[]; group
       <div className="space-y-5">
         {groups.map((g) => (
           <div key={g.id}>
-            <h3 className="mb-2 text-sm font-semibold text-text-secondary">{g.label}</h3>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">{g.label}</h3>
             <BigButtons items={g.items.map(toButton)} />
           </div>
         ))}

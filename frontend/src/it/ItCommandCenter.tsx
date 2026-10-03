@@ -21,6 +21,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageSkeleton } from '../components/common/Skeleton';
 import { DashboardIntro } from '../dashboards/DashboardShell';
+import { BigButtons } from '../dashboards/components';
 import type { WorkspaceSummary } from '../dashboards/api';
 import {
   itDashboard, itHealth, itActivityStream, itSecurity, itDatabase, itCRM,
@@ -80,25 +81,9 @@ export function ItCommandCenter({ summary: _summary }: { summary: WorkspaceSumma
         subtitle="Check that everything works."
       />
 
-      {/* Tab Navigation */}
-      <div className="mb-6 -mx-4 sm:-mx-6 lg:-mx-8">
-        <div className="overflow-x-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1 border-b border-border pb-px min-w-max">
-            {visibleTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`group flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-xs font-medium transition-colors ${activeTab === tab.id
-                    ? 'border-b-2 border-primary bg-primary-soft text-primary'
-                    : 'text-text-muted hover:bg-surface-secondary hover:text-text'
-                  }`}
-              >
-                <tab.icon size={14} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Every IT area is an app icon; the open one has a white ring. */}
+      <div className="mb-8">
+        <BigButtons items={visibleTabs.map((tab) => ({ label: tab.label, icon: tab.icon, onClick: () => setActiveTab(tab.id), active: activeTab === tab.id }))} />
       </div>
 
       {/* Tab Content */}
@@ -734,9 +719,9 @@ function SectionHeader({ title, icon: Icon, count, action }: { title: string; ic
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        {Icon && <Icon size={16} className="text-text-muted" />}
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">{title}</h2>
-        {count !== undefined && <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-xs font-medium text-text-secondary">{count}</span>}
+        {Icon && <Icon size={16} className="text-white/80" />}
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-white">{title}</h2>
+        {count !== undefined && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white">{count}</span>}
       </div>
       {action}
     </div>
@@ -745,7 +730,7 @@ function SectionHeader({ title, icon: Icon, count, action }: { title: string; ic
 
 function RefreshButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors" title="Refresh">
+    <button onClick={onClick} className="flex items-center gap-1 text-xs text-white/80 hover:text-white transition-colors" title="Refresh">
       <RefreshCw size={12} /> Refresh
     </button>
   );
