@@ -12,6 +12,8 @@ export interface NavItem {
   placeholder?: boolean;
   /** Match the path exactly (for section index routes). */
   end?: boolean;
+  /** Kept and reachable by its link, but left out of menus, search and dashboards. */
+  hidden?: boolean;
 }
 
 export interface NavSection {

@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Badge, StatusBadge, type BadgeTone } from '../components/common/Badge';
 import { Card, CardHeader } from '../components/common/Card';
@@ -9,6 +9,7 @@ import { Table, type Column } from '../components/common/Table';
 import { dateTime, relativeTime } from '../lib/format';
 import { sections as navSections } from '../modules/registry';
 import { useAuth } from '../auth/AuthContext';
+import type { NavItem } from '../types';
 import type { FeedItem } from './api';
 
 /* Building blocks shared by every role dashboard. Which of them a dashboard renders is
@@ -16,9 +17,9 @@ import type { FeedItem } from './api';
 
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-3 mt-6 flex items-end justify-between gap-3 first:mt-0">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">{children}</h2>
-      {action}
+    <div className="mb-3 mt-8 flex items-end justify-between gap-3 first:mt-0">
+      <h2 className="text-lg font-semibold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]">{children}</h2>
+      {action && <div className="text-white [&_a]:!text-white">{action}</div>}
     </div>
   );
 }
@@ -241,29 +242,135 @@ export function TwoColumn({ main, side }: { main: ReactNode; side: ReactNode }) 
   );
 }
 
-/**
- * Entity cards for the modules this user may open, read straight from the nav registry
- * so a role never sees an area it has no permission for.
- */
-export function ModuleEntities({ ids }: { ids?: string[] }) {
+export interface BigButtonItem {
+  label: string;
+  icon: LucideIcon;
+  /** In-app route. */
+  to?: string;
+  /** Opens outside the app, in a new tab. */
+  href?: string;
+  onClick?: () => void;
+  /** Short word shown when something is waiting here, e.g. "New". Never a count. */
+  flag?: string;
+  tone?: 'primary' | 'success' | 'warning' | 'info' | 'danger';
+  /** The app currently open, when the icons switch views on the same page. */
+  active?: boolean;
+}
+
+/* App-launcher tiles, like a phone home screen: a bold square of colour with a white symbol and one name under it. */
+const TILE_COLORS = [
+  'bg-[#B5485D]', // rose
+  'bg-[#1F3A6B]', // navy
+  'bg-[#D9822B]', // orange
+  'bg-[#A13D3D]', // brick
+  'bg-[#2C5F8A]', // steel blue
+  'bg-[#5B3A29]', // brown
+  'bg-[#2E86DE]', // bright blue
+  'bg-[#2D3436]', // charcoal
+  'bg-[#1E8C7E]', // teal
+  'bg-[#8E9F2E]', // olive
+  'bg-[#6C4AB6]', // purple
+  'bg-[#C0392B]', // red
+];
+const TONE_COLORS = {
+  primary: 'bg-[#4F46E5]',
+  success: 'bg-[#1E8C7E]',
+  warning: 'bg-[#D9822B]',
+  info: 'bg-[#2E86DE]',
+  danger: 'bg-[#C0392B]',
+};
+
+/** Same name, same colour, on every dashboard. */
+function tileColor(b: BigButtonItem) {
+  if (b.tone) return TONE_COLORS[b.tone];
+  let h = 0;
+  for (const ch of b.label) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TILE_COLORS[h % TILE_COLORS.length];
+}
+
+/** The home-screen grid: big coloured app icons with a plain name under each. Sits on the blue dashboard backdrop. */
+export function BigButtons({ items }: { items: BigButtonItem[] }) {
+  if (items.length === 0) return null;
+  const cls = 'group relative flex flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white';
+  return (
+    <div className="grid grid-cols-3 gap-x-2 gap-y-5 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+      {items.map((b) => {
+        const Icon = b.icon;
+        const body = (
+          <>
+            <span className={`relative flex h-16 w-16 items-center justify-center rounded-xl text-white shadow-[0_6px_14px_rgba(0,0,0,0.35)] transition-transform group-hover:-translate-y-0.5 sm:h-[72px] sm:w-[72px] ${tileColor(b)} ${b.active ? 'ring-4 ring-white' : ''}`}>
+              <Icon size={34} strokeWidth={2.2} aria-hidden="true" />
+              {b.flag && <span className="absolute -right-2 -top-2 rounded-full bg-danger px-2 py-0.5 text-[11px] font-semibold text-white shadow">{b.flag}</span>}
+            </span>
+            <span className="text-sm font-medium leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">{b.label}</span>
+          </>
+        );
+        if (b.href) return <a key={b.label} href={b.href} target="_blank" rel="noopener noreferrer" className={cls}>{body}</a>;
+        if (b.to) return <Link key={b.label} to={b.to} className={cls}>{body}</Link>;
+        return <button key={b.label} type="button" onClick={b.onClick} aria-pressed={b.active} className={`${cls} ${b.active ? 'bg-white/10' : ''}`}>{body}</button>;
+      })}
+    </div>
+  );
+}
+
+/** "Search menus…": type a word and the matching app icons appear. */
+export function LauncherSearch() {
   const { can } = useAuth();
-  const permitted = navSections.flatMap((s) => s.items).filter((i) => can(i.permission));
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const found = q
+    ? navSections.flatMap((s) => s.items).filter((i) => !i.hidden && !i.placeholder && can(i.permission) && `${i.label} ${i.description ?? ''}`.toLowerCase().includes(q))
+    : [];
+  return (
+    <div className="mb-8">
+      <label className="flex h-11 items-center gap-3 rounded-lg bg-white/10 px-4 text-white ring-1 ring-white/20 focus-within:bg-white/15 focus-within:ring-white/50">
+        <Search size={18} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search menus..."
+          aria-label="Search menus"
+          className="h-full w-full bg-transparent text-sm text-white placeholder:text-white/60 focus:outline-none"
+        />
+      </label>
+      {q && (
+        <div className="mt-5">
+          {found.length > 0
+            ? <BigButtons items={found.map((i) => ({ label: i.label, icon: i.icon, to: i.path }))} />
+            : <p className="text-sm text-white/80">Nothing found. Try another word.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Big buttons for the modules this user may open, read straight from the nav registry
+ * so a role never sees an area it has no permission for. Hidden modules never show.
+ * `grouped` lists every permitted module under its section name (for roles that see many).
+ */
+export function ModuleEntities({ ids, grouped = false }: { ids?: string[]; grouped?: boolean }) {
+  const { can } = useAuth();
+  const allowed = (i: NavItem) => !i.hidden && !i.placeholder && can(i.permission);
+  const toButton = (i: NavItem): BigButtonItem => ({ label: i.label, icon: i.icon, to: i.path });
+
+  if (grouped && !ids) {
+    const groups = navSections.map((s) => ({ ...s, items: s.items.filter(allowed) })).filter((s) => s.items.length > 0);
+    return (
+      <div className="space-y-5">
+        {groups.map((g) => (
+          <div key={g.id}>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">{g.label}</h3>
+            <BigButtons items={g.items.map(toButton)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const permitted = navSections.flatMap((s) => s.items).filter(allowed);
   const items = ids
     ? ids.map((id) => permitted.find((i) => i.id === id)).filter((i): i is NonNullable<typeof i> => !!i)
     : permitted;
-  if (items.length === 0) return null;
-  return (
-    <EntityGrid>
-      {items.map((i) => (
-        <EntityCard
-          key={i.id}
-          icon={i.icon}
-          title={i.label}
-          description={i.description ?? ''}
-          to={i.path}
-          badge={i.placeholder ? { label: 'Not configured', tone: 'neutral' } : undefined}
-        />
-      ))}
-    </EntityGrid>
-  );
+  return <BigButtons items={items.map(toButton)} />;
 }

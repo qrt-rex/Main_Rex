@@ -495,13 +495,13 @@ export function AssignedClientsCard() {
   return (
     <div className="mt-6">
       <Card>
-        <CardHeader title="Clients assigned to you" description="Assigned by the Legal team, with each client's services and approval status" />
+        <CardHeader title="My clients" description="Given to you by Legal" />
         <ul className="divide-y divide-border">
           {items.map((c) => (
             <li key={`${c.kind}-${c.id}`} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
               <span className="min-w-0">
                 <span className="block font-medium text-text">{c.company_name} <span className="font-mono text-xs text-text-muted">{c.reference}</span></span>
-                <span className="mt-1 block text-xs text-text-muted">{what(c).join(' · ')}{c.amount != null ? ` · ${money(c.amount)}` : ''}{c.created_at ? ` · ${date(c.created_at.slice(0, 10))}` : ''}</span>
+                <span className="mt-1 block text-xs text-text-muted">{what(c).join(' · ')}</span>
               </span>
               <span className="flex items-center gap-2">
                 <StatusBadge status={c.status} />

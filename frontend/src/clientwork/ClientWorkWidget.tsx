@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ClipboardList, PauseCircle, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useApi } from '../lib/useApi';
-import { number } from '../lib/format';
 import { Card, CardHeader } from '../components/common/Card';
 import { ErrorState } from '../components/common/ErrorState';
 import { Skeleton } from '../components/common/Skeleton';
@@ -17,27 +16,23 @@ interface Tile {
   icon: LucideIcon;
   tone: string;
   value: (c: Counters) => number;
-  detail: (c: Counters) => string;
 }
 
 const TILES: Tile[] = [
   {
-    bucket: 'need_action', label: 'Need Action', caption: 'Work requiring internal action', icon: Zap,
+    bucket: 'need_action', label: 'To do', caption: 'Clients waiting on us', icon: Zap,
     tone: 'border-primary/30 bg-primary-soft text-primary',
     value: (c) => c.need_action,
-    detail: (c) => `${c.in_progress} in progress · ${c.overdue} overdue · ${c.due_today} due today`,
   },
   {
-    bucket: 'on_hold', label: 'On Hold', caption: 'Blocked or waiting', icon: PauseCircle,
+    bucket: 'on_hold', label: 'On hold', caption: 'Stuck or waiting', icon: PauseCircle,
     tone: 'border-warning/30 bg-warning-bg text-warning',
     value: (c) => c.on_hold,
-    detail: (c) => `${c.waiting_for_client} waiting for client · ${c.internal_blocker} internal blocker`,
   },
   {
-    bucket: 'completed', label: 'Completed', caption: 'Finished client work', icon: CheckCircle2,
+    bucket: 'completed', label: 'Done', caption: 'Finished work', icon: CheckCircle2,
     tone: 'border-success/30 bg-success-bg text-success',
     value: (c) => c.completed,
-    detail: (c) => `${c.completed_today} today · ${c.completed_this_week} this week · ${c.completed_this_month} this month`,
   },
 ];
 
@@ -51,9 +46,9 @@ export function ClientWorkWidget() {
   return (
     <Card>
       <CardHeader
-        title={<span className="inline-flex items-center gap-2"><ClipboardList size={16} className="text-primary" aria-hidden="true" /> Client Work Management</span>}
-        description={`${scope} · assigned by Legal, tracked from first action to completion`}
-        actions={<><LiveDot /><Link to="/client-work" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open workspace <ArrowRight size={12} aria-hidden="true" /></Link></>}
+        title={<span className="inline-flex items-center gap-2"><ClipboardList size={16} className="text-primary" aria-hidden="true" /> Client work</span>}
+        description={scope}
+        actions={<><LiveDot /><Link to="/client-work" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open <ArrowRight size={12} aria-hidden="true" /></Link></>}
       />
       {summary.status === 'error' && !c ? (
         <ErrorState compact onRetry={summary.reload} message={summary.error} />
@@ -78,31 +73,11 @@ export function ClientWorkWidget() {
                   ) : (
                     <Skeleton className="mt-3 h-9 w-32" />
                   )}
-                  <p className="mt-1 text-xs text-text-secondary">{t.caption}</p>
-                  <p className="mt-2 truncate border-t border-current/15 pt-2 text-xs text-text-muted">{c ? t.detail(c) : ' '}</p>
+                  <p className="mt-1 text-sm text-text-secondary">{t.caption}</p>
                 </Link>
               );
             })}
           </div>
-
-          {c && (
-            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4 lg:grid-cols-7">
-              {([
-                ['Total active', c.total_active, ''],
-                ['Overdue', c.overdue, c.overdue ? 'text-danger' : ''],
-                ['Due today', c.due_today, c.due_today ? 'text-warning' : ''],
-                ['Due soon', c.due_soon, ''],
-                ['Completed today', c.completed_today, ''],
-                ['This week', c.completed_this_week, ''],
-                ['This month', c.completed_this_month, ''],
-              ] as [string, number, string][]).map(([label, v, cls]) => (
-                <div key={label} className="flex items-baseline justify-between gap-2 rounded-md bg-surface-secondary px-3 py-2">
-                  <dt className="text-text-muted">{label}</dt>
-                  <dd className={`font-semibold tabular-nums ${cls || 'text-text'}`}>{number(v)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
         </div>
       )}
     </Card>

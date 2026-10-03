@@ -9,7 +9,7 @@ import { useState, useCallback, type ReactNode } from 'react';
 import {
   Activity, AlertTriangle, Archive, BarChart3, Bell, Clock, Database,
   FileText, Globe, HardDrive, KeyRound, LayoutDashboard, RefreshCw,
-  Search, Server, Shield, ShieldAlert, Terminal, TrendingUp, Upload, Users, Zap,
+  Search, Shield, ShieldAlert, Terminal, TrendingUp, Upload, Users, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -21,12 +21,13 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PageSkeleton } from '../components/common/Skeleton';
 import { DashboardIntro } from '../dashboards/DashboardShell';
+import { BigButtons } from '../dashboards/components';
 import type { WorkspaceSummary } from '../dashboards/api';
 import {
   itDashboard, itHealth, itActivityStream, itSecurity, itDatabase, itCRM,
   itIncidents, itTasks, itAlerts, itSessions, itDeployments, itBackups, itEmergencyAccess,
   itSearch,
-  type ITDashboardData, type ActivityItem, type SearchResults,
+  type ActivityItem, type SearchResults,
 } from './api';
 
 /* ------------------------------------------------------------------ */
@@ -43,15 +44,6 @@ const STATUS_TONE: Record<string, BadgeTone> = {
 
 const SEVERITY_TONE: Record<string, BadgeTone> = { critical: 'danger', high: 'danger', medium: 'warning', low: 'info', info: 'neutral' };
 const severityTone = (s: string): BadgeTone => SEVERITY_TONE[s] ?? 'neutral';
-
-function uptime(seconds: number) {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Tabs                                                               */
@@ -86,30 +78,12 @@ export function ItCommandCenter({ summary: _summary }: { summary: WorkspaceSumma
   return (
     <>
       <DashboardIntro
-        title="IT Command Center"
-        subtitle="Infrastructure, security and operations."
-        actions={<Badge tone="primary" dot>Command Center</Badge>}
+        subtitle="Check that everything works."
       />
 
-      {/* Tab Navigation */}
-      <div className="mb-6 -mx-4 sm:-mx-6 lg:-mx-8">
-        <div className="overflow-x-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1 border-b border-border pb-px min-w-max">
-            {visibleTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`group flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-xs font-medium transition-colors ${activeTab === tab.id
-                    ? 'border-b-2 border-primary bg-primary-soft text-primary'
-                    : 'text-text-muted hover:bg-surface-secondary hover:text-text'
-                  }`}
-              >
-                <tab.icon size={14} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Every IT area is an app icon; the open one has a white ring. */}
+      <div className="mb-8">
+        <BigButtons items={visibleTabs.map((tab) => ({ label: tab.label, icon: tab.icon, onClick: () => setActiveTab(tab.id), active: activeTab === tab.id }))} />
       </div>
 
       {/* Tab Content */}
@@ -143,48 +117,28 @@ function OverviewTab() {
   const d = data;
   const overall = d.health.overall;
 
+  // Only what tells IT whether to act. Details live in the other tabs.
+  const broken = Object.entries(d.health.services).filter(([, svc]) => (svc as { status?: string }).status !== 'healthy');
+
   return (
     <div className="space-y-6">
-      {/* Live metric cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8">
-        <MetricCard icon={Activity} label="System" value={overall === 'healthy' ? 'Healthy' : overall} tone={STATUS_TONE[overall] ?? 'neutral'} />
-        <MetricCard icon={Server} label="API" value={d.health.services.api?.status === 'healthy' ? 'Healthy' : 'Issue'} tone={STATUS_TONE[d.health.services.api?.status ?? 'unknown']} />
-        <MetricCard icon={Database} label="Database" value={d.health.services.database?.status === 'healthy' ? 'Healthy' : 'Issue'} tone={STATUS_TONE[d.health.services.database?.status ?? 'unknown']} hint={`${d.health.services.database?.latency_ms ?? 0} ms`} />
-        <MetricCard icon={HardDrive} label="Server" value={uptime(d.infrastructure.uptime_seconds)} hint={`v${d.infrastructure.version}`} />
-        <MetricCard icon={Users} label="Active Users" value={number(d.active_users)} hint={`${d.online_users} online`} tone="info" />
-        <MetricCard icon={ShieldAlert} label="Failed Logins" value={number(d.failed_logins_24h)} tone={d.failed_logins_24h > 0 ? 'warning' : 'success'} hint="last 24h" />
-        <MetricCard icon={AlertTriangle} label="Incidents" value={number(d.open_incidents)} tone={d.open_incidents > 0 ? 'danger' : 'success'} />
-        <MetricCard icon={Terminal} label="IT Tasks" value={number(d.pending_it_tasks)} tone={d.pending_it_tasks > 0 ? 'warning' : 'success'} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={Activity} label="Is everything OK?" value={overall === 'healthy' ? 'Yes' : 'No, check it'} tone={STATUS_TONE[overall] ?? 'neutral'} />
+        <MetricCard icon={AlertTriangle} label="Problems open" value={number(d.open_incidents)} tone={d.open_incidents > 0 ? 'danger' : 'success'} />
+        <MetricCard icon={Terminal} label="IT jobs to do" value={number(d.pending_it_tasks)} tone={d.pending_it_tasks > 0 ? 'warning' : 'success'} />
+        <MetricCard icon={ShieldAlert} label="Failed sign-ins today" value={number(d.failed_logins_24h)} tone={d.failed_logins_24h > 0 ? 'warning' : 'success'} />
       </div>
 
-      {/* Health Grid */}
-      <SectionHeader title="System Health" icon={Activity} action={<RefreshButton onClick={reload} />} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {Object.entries(d.health.services).map(([name, svc]) => (
-          <HealthServiceCard key={name} name={name} service={svc} />
-        ))}
-      </div>
-
-      {/* Two-column: Activity + Quick Stats */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <QuickActivityStream />
-        </div>
-        <div className="space-y-4">
-          <InfraCard infra={d.infrastructure} />
-          {d.latest_deployment && <QuickCard title="Latest Deployment" icon={Upload} rows={[
-            ['Version', String(d.latest_deployment.version ?? '')],
-            ['Environment', String(d.latest_deployment.environment ?? '')],
-            ['Status', String(d.latest_deployment.status ?? '')],
-            ['Deployed', dateTime(String(d.latest_deployment.deployed_at ?? ''))],
-          ]} />}
-          {d.latest_backup && <QuickCard title="Latest Backup" icon={Archive} rows={[
-            ['ID', String(d.latest_backup.backup_id ?? '')],
-            ['Status', String(d.latest_backup.status ?? '')],
-            ['Created', dateTime(String(d.latest_backup.created_at ?? ''))],
-          ]} />}
-        </div>
-      </div>
+      {broken.length > 0 && (
+        <>
+          <SectionHeader title="Needs fixing" icon={Activity} action={<RefreshButton onClick={reload} />} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {broken.map(([name, svc]) => (
+              <HealthServiceCard key={name} name={name} service={svc} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -765,9 +719,9 @@ function SectionHeader({ title, icon: Icon, count, action }: { title: string; ic
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        {Icon && <Icon size={16} className="text-text-muted" />}
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">{title}</h2>
-        {count !== undefined && <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-xs font-medium text-text-secondary">{count}</span>}
+        {Icon && <Icon size={16} className="text-white/80" />}
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-white">{title}</h2>
+        {count !== undefined && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white">{count}</span>}
       </div>
       {action}
     </div>
@@ -776,7 +730,7 @@ function SectionHeader({ title, icon: Icon, count, action }: { title: string; ic
 
 function RefreshButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors" title="Refresh">
+    <button onClick={onClick} className="flex items-center gap-1 text-xs text-white/80 hover:text-white transition-colors" title="Refresh">
       <RefreshCw size={12} /> Refresh
     </button>
   );
@@ -802,37 +756,6 @@ function ActivityRow({ item }: { item: ActivityItem }) {
         {item.result !== 'SUCCESS' && <Badge tone="danger" >{item.result}</Badge>}
       </div>
     </div>
-  );
-}
-
-function QuickActivityStream() {
-  const { data, status, reload } = useApi(() => itActivityStream(15));
-  return (
-    <Card>
-      <CardHeader title="Live Activity Stream" description="Latest actions across the system" actions={<RefreshButton onClick={reload} />} />
-      {status === 'loading' || !data ? (
-        <div className="p-4 text-sm text-text-muted">Loading...</div>
-      ) : data.length === 0 ? (
-        <EmptyState compact title="No recent activity" />
-      ) : (
-        <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
-          {data.map(item => <ActivityRow key={item.id} item={item} />)}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function InfraCard({ infra }: { infra: ITDashboardData['infrastructure'] }) {
-  return (
-    <QuickCard title="Infrastructure" icon={Server} rows={[
-      ['Application', infra.app_name],
-      ['Version', `v${infra.version}`],
-      ['Environment', infra.environment],
-      ['Runtime', `Python ${infra.python}`],
-      ['Platform', infra.platform],
-      ['Uptime', uptime(infra.uptime_seconds)],
-    ]} />
   );
 }
 

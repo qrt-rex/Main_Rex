@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Download, FileSpreadsheet, IndianRupee, Upload, UserX, Users } from 'lucide-react';
+import { AlertTriangle, Clock, Download, FileSpreadsheet, Upload, UserX } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { money, todayISO } from '../lib/format';
@@ -19,42 +19,36 @@ const day = (c: Client) => (c.created_at || '').slice(0, 10);
 // ---------------------------------------------------------------- overview
 const tile = 'rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900';
 
-/** Headline numbers across legal records and client document forms. */
+/** The few numbers Legal acts on: what to check, what to assign, what is stuck. */
 export function LegalOverview({ refreshKey }: { refreshKey: string }) {
   const all = useApi(fetchAll, [refreshKey]);
   const s = useMemo(() => {
     const items = all.data ?? [];
     const count = (st: string[]) => items.filter((c) => st.includes(c.status)).length;
     return {
-      total: items.length,
       waiting: count(['PENDING', 'UNDER REVIEW']),
-      approved: count(['APPROVED']),
       blocked: count(['HOLD', 'REJECTED']),
       unassigned: items.filter((c) => !c.assigned_to).length,
-      value: items.reduce((sum, c) => sum + (c.amount ?? 0), 0),
-      thisMonth: items.filter((c) => day(c).slice(0, 7) === todayISO().slice(0, 7)).length,
     };
   }, [all.data]);
 
+  // Only what needs someone to act. Totals and amounts live in the records and exports.
   const tiles = [
-    { label: 'Total clients', value: s.total, hint: `${s.thisMonth} added this month`, icon: Users, tone: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 dark:text-indigo-300' },
-    { label: 'Waiting for review', value: s.waiting, hint: 'Pending or under review', icon: Clock, tone: 'text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300' },
-    { label: 'Approved', value: s.approved, hint: 'Ready to bill', icon: CheckCircle2, tone: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 dark:text-emerald-300' },
-    { label: 'On hold / rejected', value: s.blocked, hint: 'Need follow-up', icon: AlertTriangle, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300' },
-    { label: 'Unassigned', value: s.unassigned, hint: 'No staff member yet', icon: UserX, tone: 'text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
-    { label: 'Amount paid (with GST)', value: money(s.value), hint: 'Across legal records', icon: IndianRupee, tone: 'text-teal-600 bg-teal-50 dark:bg-teal-950/50 dark:text-teal-300' },
+    { label: 'To check', value: s.waiting, hint: 'Waiting for your review', icon: Clock, tone: 'text-amber-600 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300' },
+    { label: 'Give to someone', value: s.unassigned, hint: 'No one is handling these yet', icon: UserX, tone: 'text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
+    { label: 'Stuck', value: s.blocked, hint: 'On hold or rejected', icon: AlertTriangle, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300' },
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+    <div className="grid gap-3 sm:grid-cols-3">
       {tiles.map(({ label, value, hint, icon: Icon, tone }) => (
         <div key={label} className={tile}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
-            <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tone}`}><Icon size={15} /></span>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</p>
+            <span className={`flex h-9 w-9 items-center justify-center rounded-full ${tone}`}><Icon size={18} /></span>
           </div>
-          <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{all.data ? value : '…'}</p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-white">{all.data ? value : '…'}</p>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{hint}</p>
         </div>
       ))}
     </div>
