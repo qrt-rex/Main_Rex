@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarCheck, CircleCheck, Megaphone, PartyPopper, UserPlus } from 'lucide-react';
+import { Bell, Briefcase, CalendarCheck, CircleCheck, Megaphone, PartyPopper, UserPlus } from 'lucide-react';
 import { useNotifications, type NotificationItem } from '../lib/notifications';
 import { api, ApiError } from '../lib/api';
 import { useToast } from '../components/common/ToastContext';
@@ -12,12 +12,13 @@ import { ErrorState } from '../components/common/ErrorState';
 import { Skeleton } from '../components/common/Skeleton';
 import { PageHeader } from '../components/layout/PageHeader';
 
-const icons: Record<NotificationItem['type'], typeof Bell> = {
+const icons: Partial<Record<NotificationItem['type'], typeof Bell>> = {
   approval: CalendarCheck,
   update: CircleCheck,
   recruitment: UserPlus,
   onboarding: PartyPopper,
   broadcast: Megaphone,
+  operations: Briefcase,
 };
 
 /** Broadcast text as plain text: the HTML is written by HR, so it is never injected into the page. */
@@ -59,7 +60,7 @@ export function Notifications() {
         ) : (
           <ul className="divide-y divide-border">
             {items.map((n) => {
-              const Icon = icons[n.type];
+              const Icon = icons[n.type] ?? Bell;
               const unread = isUnread(n);
               return (
                 <li key={n.id} className="flex flex-col">

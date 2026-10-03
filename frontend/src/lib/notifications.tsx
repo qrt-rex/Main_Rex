@@ -6,7 +6,7 @@ import { useClientWorkLive } from '../clientwork/live';
 export interface NotificationItem {
   id: string;
   /** approval: waiting on you to decide · update: the outcome of your own request */
-  type: 'approval' | 'update' | 'recruitment' | 'onboarding' | 'broadcast';
+  type: 'approval' | 'update' | 'recruitment' | 'onboarding' | 'broadcast' | 'operations' | 'pf';
   title: string;
   description: string;
   timestamp: string | null;

@@ -61,6 +61,7 @@ const JoiningPortal = lazy(() => import('./pages/public/JoiningPortal').then((m)
 const LegalDashboard = lazy(() => import('./dashboards/LegalDashboard').then((m) => ({ default: m.LegalDashboard })));
 const ClientWorkPage = lazy(() => import('./clientwork/ClientWorkPage').then((m) => ({ default: m.ClientWorkPage })));
 const ClientWorkWorkspace = lazy(() => import('./clientwork/ClientWorkWorkspace').then((m) => ({ default: m.ClientWorkWorkspace })));
+const OperationDashboard = lazy(() => import('./operations/OperationDashboard').then((m) => ({ default: m.OperationDashboard })));
 const IvrApp = lazy(() => import('./ivr/IvrApp').then((m) => ({ default: m.IvrApp })));
 const DialerPage = lazy(() => import('./sales/DialerPage').then((m) => ({ default: m.DialerPage })));
 
@@ -158,6 +159,9 @@ export default function App() {
 
                     {/* Legal Module */}
                     <Route path="/legal" element={guard('legal-matters', <LegalDashboard />)} />
+
+                    {/* Operation dashboard: client cases by stage, with Legal's documents */}
+                    <Route path="/operations" element={guard('ops-dashboard', <OperationDashboard />)} />
 
                     {/* Client work lifecycle: the dashboard widget and queues open here */}
                     <Route path="/client-work" element={guard('client-work', <ClientWorkPage />)} />
