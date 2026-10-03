@@ -692,7 +692,11 @@ async def get_legal_record_pdf(crm_id: str, admin: Dict[str, Any] = Depends(get_
     rec = await col.find_one({"crm_id": formatted_crm_id}) or await col.find_one({"_id": crm_id})
     if not rec or not (await full_legal_access(admin) or assigned_to_me(rec, admin)):
         raise HTTPException(status_code=404, detail="Legal document not found")
+    return HTMLResponse(content=record_report_html(rec))
 
+
+def record_report_html(rec: Dict[str, Any]) -> str:
+    """The Legal team's verification report for a legal record (also listed on the Operation dashboard)."""
     services_html = "".join([f"<span class='badge'>{s}</span>" for s in rec.get("services", [])])
     company = rec.get("company_name", "N/A")
     cid = rec.get("crm_id", "N/A")
@@ -763,4 +767,4 @@ async def get_legal_record_pdf(crm_id: str, admin: Dict[str, Any] = Depends(get_
     </div>
 </body>
 </html>"""
-    return HTMLResponse(content=html_content)
+    return html_content

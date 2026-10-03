@@ -97,6 +97,10 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
         ("clientwork.monitor", "Legal team: monitor every client's work, reassign, change priority & deadline"),
         ("clientwork.admin", "Super Admin: organisation-wide client work analytics & status overrides"),
     ]),
+    ("operations_dashboard", "Operation dashboard", [
+        ("operations.dashboard.view", "Operation dashboard: every client case, its stage and the documents Legal provided or approved"),
+        ("operations.dashboard.manage", "Move client cases between operation stages"),
+    ]),
     ("operations", "Operations", [
         ("finance.view", "Finance"),
         ("projects.view", "Projects"),
@@ -154,17 +158,18 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "admin": ["users.manage", "audit.view", "hr.dashboard.view", "hr.employees.view", "hr.leave.view", "hr.leave.approve",
               *_SALES_ALL, "legal.view", "finance.view", "projects.view", "reports.view",
               "clients.view", "support.desk.view", *_BILLING_ALL, "automations.manage", "documents.submit",
-              "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr", *_PF_STAFF, "clientwork.view"],
+              "sales.hub.manage", "sales.scorecard.export", "billing.all_invoices", "billing.gstr", *_PF_STAFF, "clientwork.view",
+              "operations.dashboard.view", "operations.dashboard.manage"],
     "hr": [*_HR_ALL, *_BILLING_ALL, "billing.tax_invoice", "billing.all_invoices", "automations.manage", "documents.submit",
            "sales.scorecard.view", "sales.scorecard.export", "sales.incentives.configure", "clientwork.view"],
     "legal": ["legal.view", "legal.manage", "sales.hub.view", "sales.hub.manage", "hr.leave.view", "hr.leave.approve", "billing.gstr",
-              "clientwork.view", "clientwork.monitor"],
+              "clientwork.view", "clientwork.monitor", "operations.dashboard.view", "operations.dashboard.manage"],
     "sales": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view", "clientwork.view"],
     "it": ["it.systems.view", "it.security.view", "it.deployment.view", "it.backup.manage",
            "it.incidents.manage", "it.tasks.manage", "it.emergency.manage", "it.config.manage",
            "it.crm.monitor", "users.manage", "audit.view", "clientwork.view"],
     "support": ["support.desk.view", "clients.view", "sales.customers.view", "sales.contacts.view",
-                "hr.broadcasts.view", "documents.submit", "clientwork.view"],
+                "hr.broadcasts.view", "documents.submit", "clientwork.view", "operations.dashboard.view", "operations.dashboard.manage"],
     "employee": [*_SALES_ALL, "clients.view", "billing.view", "billing.create", "documents.submit", "hr.broadcasts.view", "hr.leave.view", "hr.attendance.view", "hr.payroll.view", "clientwork.view"],
 }
 
@@ -173,6 +178,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
 # then persisted: a Super Admin can still remove it afterwards.
 LATER_ADDED_DEFAULTS: Dict[str, List[str]] = {
     "client_work": ["clientwork.view", "clientwork.monitor"],
+    "operations_dashboard": ["operations.dashboard.view", "operations.dashboard.manage"],
 }
 
 # ---------------------------------------------------------------------------
@@ -414,6 +420,11 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("PATCH", "/api/client-documents/{submission_id}/status"): "legal.view",
     # Client work lifecycle. Who may see or change a given piece of work is also checked per record
     # (assignee / monitor / admin) inside client_work_service, so a route permission alone never opens it.
+    # Operation dashboard
+    ("GET", "/api/operations/board"): "operations.dashboard.view",
+    ("GET", "/api/operations/cases/{kind}/{item_id}"): "operations.dashboard.view",
+    ("PUT", "/api/operations/cases/{kind}/{item_id}/stage"): "operations.dashboard.manage",
+    ("GET", "/api/operations/cases/{kind}/{item_id}/documents/{doc_id}"): "operations.dashboard.view",
     ("GET", "/api/client-work/stream"): "clientwork.view",
     ("GET", "/api/client-work/summary"): "clientwork.view",
     ("GET", "/api/client-work/stats"): "clientwork.view",

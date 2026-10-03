@@ -50,6 +50,7 @@ from app.routers.client_work import router as client_work_router
 from app.services import client_work_service
 from app.routers.sales_performance import router as sales_performance_router
 from app.routers.pf import router as pf_router
+from app.routers.operations import router as operations_router
 from app.services.automation_service import AutomationService
 from app.services.rbac_service import enforce, check_route_coverage
 
@@ -161,6 +162,7 @@ API_ROUTERS = [
     bulk_import_router, reports_router, broadcast_router, rbac_router, users_router,
     notifications_router, workspace_router, billing_router, legal_router, automations_router, it_dashboard_router,
     client_documents_router, sales_hub_router, ivr_router, client_work_router, sales_performance_router, pf_router,
+    operations_router,
 ]
 for api_router in API_ROUTERS:
     app.include_router(api_router, dependencies=[Depends(enforce)])
