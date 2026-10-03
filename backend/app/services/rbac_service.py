@@ -99,7 +99,7 @@ CATALOG: List[Tuple[str, str, List[Tuple[str, str]]]] = [
     ]),
     ("operations_dashboard", "Operation dashboard", [
         ("operations.dashboard.view", "Operation dashboard: unassigned client cases and those assigned to or by you; move stages, assign to an Admin, call & email reminders"),
-        ("operations.dashboard.manage", "See and reassign every client case on the Operation dashboard"),
+        ("operations.dashboard.manage", "See and reassign every client case on the Operation dashboard, and manage its services list"),
     ]),
     ("operations", "Operations", [
         ("finance.view", "Finance"),
@@ -430,6 +430,11 @@ ROUTE_RULES: Dict[Tuple[str, str], Rule] = {
     ("GET", "/api/operations/reminders"): "operations.dashboard.view",
     ("POST", "/api/operations/reminders/{reminder_id}/done"): "operations.dashboard.view",
     ("DELETE", "/api/operations/reminders/{reminder_id}"): "operations.dashboard.view",
+    ("PUT", "/api/operations/cases/{kind}/{item_id}/services"): "operations.dashboard.view",
+    ("GET", "/api/operations/services"): "operations.dashboard.view",
+    ("POST", "/api/operations/services"): "operations.dashboard.manage",
+    ("PUT", "/api/operations/services/{service_id}"): "operations.dashboard.manage",
+    ("DELETE", "/api/operations/services/{service_id}"): "operations.dashboard.manage",
     ("GET", "/api/operations/cases/{kind}/{item_id}/documents/{doc_id}"): "operations.dashboard.view",
     ("GET", "/api/client-work/stream"): "clientwork.view",
     ("GET", "/api/client-work/summary"): "clientwork.view",

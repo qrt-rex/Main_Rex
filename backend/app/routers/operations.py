@@ -45,6 +45,7 @@ STAGES: List[Dict[str, str]] = [
     {"key": "SELECTION", "label": "Selection"},
 ]
 STAGE_LABELS = {s["key"]: s["label"] for s in STAGES}
+STAGE_ORDER = {s["key"]: i for i, s in enumerate(STAGES)}
 FIRST_STAGE = STAGES[0]["key"]
 VIEWS = ("unassigned", "mine", "by_me", "all")
 
@@ -113,18 +114,31 @@ def _reminder_view(r: Dict[str, Any]) -> Dict[str, Any]:
             "done_at": r.get("done_at"), "case_key": (r.get("related") or {}).get("id"), "company_name": (r.get("related") or {}).get("label", "")}
 
 
+def _approved_at(raw: Dict[str, Any]) -> str:
+    """When Legal approved the client (best known time), or "" while it isn't approved."""
+    if raw.get("status") != "APPROVED":
+        return ""
+    return str(raw.get("reviewed_at") or raw.get("updated_at") or raw.get("created_at") or "")
+
+
 def _case(client: Dict[str, Any], row: Optional[Dict[str, Any]], documents: List[Dict[str, Any]], pending_review: int,
-          reminders: List[Dict[str, Any]]) -> Dict[str, Any]:
+          reminders: List[Dict[str, Any]], raw: Dict[str, Any]) -> Dict[str, Any]:
     row = row or {}
     stage = row.get("stage") if row.get("stage") in STAGE_LABELS else FIRST_STAGE
+    max_stage = row.get("max_stage") if row.get("max_stage") in STAGE_LABELS else None
     open_r = [r for r in reminders if not r.get("done_at")]
+    # The client's status: Legal's verdict until the case leaves Onboarding, then the stage it has reached.
+    status = client["status"] if stage == FIRST_STAGE else STAGE_LABELS[stage].upper()
     return {"key": _case_key(client["kind"], client["id"]), "kind": client["kind"], "id": client["id"], "reference": client["reference"],
             "company_name": client["company_name"], "contact_name": client["contact_name"], "contact_email": client["contact_email"],
-            "contact_phone": client["contact_phone"], "gstin": client.get("gstin", ""), "bdm": client["bdm"], "services": client["services"],
+            "contact_phone": client["contact_phone"], "gstin": client.get("gstin", ""), "bdm": client["bdm"],
+            "services": row.get("services") if row.get("services") is not None else client["services"],
             "amount": client.get("amount"), "legal_status": client["status"], "legal_approved": client["status"] == "APPROVED",
+            "legal_approved_at": _approved_at(raw), "current_status": status,
             "legal_assigned_to": client.get("assigned_to"), "created_at": client["created_at"],
             "assigned_to": row.get("assigned_to"), "assigned_by": row.get("assigned_by"), "assigned_at": row.get("assigned_at"),
             "stage": stage, "stage_label": STAGE_LABELS[stage],
+            "max_stage": max_stage, "max_stage_label": STAGE_LABELS.get(max_stage or "", ""),
             "stage_since": row.get("stage_since") or client["created_at"], "stage_by": row.get("stage_by", ""),
             "documents": documents, "pending_review": pending_review,
             "next_reminder": _reminder_view(open_r[0]) if open_r else None}
@@ -166,7 +180,7 @@ async def _build_case(kind: str, item_id: str, admin: Dict[str, Any]) -> Dict[st
     row = await get_collection("operation_cases").find_one({"_id": key})
     reminders = await ops.case_reminders(key)
     files = (await _work_files_by_client()).get(key, [])
-    case = _case(_client_view(kind, raw), row, _documents(kind, raw, files, await _legal_user_ids()), _pending_review(kind, raw), reminders)
+    case = _case(_client_view(kind, raw), row, _documents(kind, raw, files, await _legal_user_ids()), _pending_review(kind, raw), reminders, raw)
     if not _may_see(case, _uid(admin), await _can_manage(admin)):
         raise HTTPException(status_code=404, detail="Case not found.")  # assigned to someone else
     case["history"] = list(reversed((row or {}).get("history") or []))
@@ -206,7 +220,7 @@ async def board(
         key = _case_key(c["kind"], c["id"])
         raw = raws.get(key) or {}
         cases.append(_case(c, rows.get(key), _documents(c["kind"], {"_id": c["id"], **raw}, files.get(key, []), legal_ids),
-                           _pending_review(c["kind"], raw), reminders.get(key, [])))
+                           _pending_review(c["kind"], raw), reminders.get(key, []), raw))
     if search and search.strip():
         clients_by_key = {_case_key(c["kind"], c["id"]): c for c in clients}
         cases = [x for x in cases if _matches(clients_by_key[x["key"]], search.strip())
@@ -215,7 +229,8 @@ async def board(
         cases = [x for x in cases if x["documents"]]
 
     views = {v: sum(1 for x in cases if _in_view(x, v, me)) for v in VIEWS if v != "all" or manage}
-    cases = [x for x in cases if _in_view(x, view, me)]
+    # Newest Legal approval first; clients still waiting for Legal after them, newest first.
+    cases = sorted((x for x in cases if _in_view(x, view, me)), key=lambda x: (x["legal_approved_at"], x["created_at"]), reverse=True)
     counts = {s["key"]: 0 for s in STAGES}
     for x in cases:
         counts[x["stage"]] += 1
@@ -257,6 +272,11 @@ async def move_case(kind: str, item_id: str, req: StageMove, admin: Dict[str, An
         raise HTTPException(status_code=409, detail="Onboarding finishes once Legal approves this client's documents.")
     if case["stage"] == req.stage:
         return case
+    me_id = _uid(admin)
+    limit = case.get("max_stage")
+    if limit and STAGE_ORDER[req.stage] > STAGE_ORDER[limit] and me_id != (case.get("assigned_by") or {}).get("user_id") \
+            and not await _can_manage(admin):
+        raise HTTPException(status_code=409, detail=f"This case may go up to {STAGE_LABELS[limit]}. Ask whoever assigned it to raise the limit.")
     key = _case_key(kind, item_id)
     row = await get_collection("operation_cases").find_one({"_id": key})
     at, me = _now(), _person(admin)
@@ -275,6 +295,7 @@ async def move_case(kind: str, item_id: str, req: StageMove, admin: Dict[str, An
 
 class AssignCase(BaseModel):
     user_id: Optional[str] = None  # None unassigns
+    max_stage: Optional[str] = None  # the furthest stage the assignee may move the case to; None means no limit
     note: str = Field(default="", max_length=1000)
 
 
@@ -291,20 +312,34 @@ async def assign_case(kind: str, item_id: str, req: AssignCase, admin: Dict[str,
         if not user or not user.get("is_active", True) or not has_role(user, "admin"):
             raise HTTPException(status_code=404, detail="Pick an active Admin to assign this case to.")
         assigned = _person(user)
-    if (assigned or {}).get("user_id") == current.get("user_id"):
+    if req.max_stage and req.max_stage not in STAGE_LABELS:
+        raise HTTPException(status_code=422, detail=f"Max allowed stage must be one of: {', '.join(s['label'] for s in STAGES)}.")
+    limit = req.max_stage if assigned else None
+    same = (assigned or {}).get("user_id") == current.get("user_id")
+    if same and limit == case.get("max_stage"):
         return case
     key, at = _case_key(kind, item_id), _now()
     row = await get_collection("operation_cases").find_one({"_id": key})
-    log = {"at": at, "by": me["name"], "from": current.get("name", ""), "to": (assigned or {}).get("name", ""), "note": req.note.strip()}
-    await _save(key, kind, item_id, row, {"assigned_to": assigned, "assigned_by": me if assigned else None, "assigned_at": at if assigned else None,
-                                          "updated_at": at, "assignment_history": [*((row or {}).get("assignment_history") or []), log]})
+    log = {"at": at, "by": me["name"], "from": current.get("name", ""), "to": (assigned or {}).get("name", ""),
+           "max_stage": limit, "note": req.note.strip()}
+    changes: Dict[str, Any] = {"max_stage": limit, "updated_at": at, "assignment_history": [*((row or {}).get("assignment_history") or []), log]}
+    if not same:
+        changes.update({"assigned_to": assigned, "assigned_by": me if assigned else None, "assigned_at": at if assigned else None})
+    await _save(key, kind, item_id, row, changes)
+    if same:
+        if assigned and assigned["user_id"] != me["user_id"]:
+            await ops.notify(assigned["user_id"], f"{case['company_name']}: you may now take it up to {STAGE_LABELS[limit] if limit else 'any stage'}",
+                             f"Changed by {me['name']}")
+        return await _build_case(kind, item_id, admin)
+    upto = f" · up to {STAGE_LABELS[limit]}" if limit else ""
     if assigned and assigned["user_id"] != me["user_id"]:
         title = f"Client case assigned to you: {case['company_name']}"
-        await ops.notify(assigned["user_id"], title, f"By {me['name']} · stage {case['stage_label']}" + (f" · {req.note.strip()}" if req.note.strip() else ""))
+        await ops.notify(assigned["user_id"], title, f"By {me['name']} · stage {case['stage_label']}{upto}" + (f" · {req.note.strip()}" if req.note.strip() else ""))
         await ops.email(assigned["email"], title,
                         f"<p>Dear {escape(assigned['name'])},</p><p>{escape(me['name'])} assigned the client "
                         f"<b>{escape(case['company_name'])}</b> ({escape(case['reference'])}) to you on the Operation dashboard.</p>"
-                        f"<p>Current stage: {escape(case['stage_label'])}</p>"
+                        f"<p>Current stage: {escape(case['stage_label'])}"
+                        + (f"<br>You may take it up to: {escape(STAGE_LABELS[limit])}" if limit else "") + "</p>"
                         + (f"<p>Note: {escape(req.note.strip())}</p>" if req.note.strip() else "")
                         + "<p>You'll find it under “Assigned to me” on your dashboard.</p>")
     if current.get("user_id") and current["user_id"] != me["user_id"]:
@@ -400,3 +435,91 @@ async def delete_reminder(reminder_id: str, admin: Dict[str, Any] = Depends(get_
     r = await _own_reminder(reminder_id, admin)
     await get_collection("crm_activities").delete_one({"_id": r["_id"]})
     return {"success": True}
+
+
+# ------------------------------------------------------------------ services
+class ServiceName(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+def _clean_name(name: str) -> str:
+    name = " ".join(name.split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Give the service a name.")
+    return name
+
+
+async def _services() -> List[Dict[str, Any]]:
+    col = get_collection("operation_services")
+    rows = await col.find({}).to_list(2000)
+    if not rows and not await get_collection("operation_settings").find_one({"_id": "services_seeded"}):
+        # First use: start from the services already on Legal's records.
+        names = sorted({str(x).strip() for r in await get_collection("legal_records").find({}).to_list(5000)
+                        for x in (r.get("services") or []) if str(x).strip()}, key=str.lower)
+        for n in names:
+            await col.insert_one({"_id": uuid.uuid4().hex, "name": n, "created_at": _now(), "created_by": "Legal records"})
+        await get_collection("operation_settings").insert_one({"_id": "services_seeded", "at": _now()})
+        rows = await col.find({}).to_list(2000)
+    return sorted(({"id": str(r["_id"]), "name": r.get("name", "")} for r in rows), key=lambda r: r["name"].lower())
+
+
+async def _unique(name: str, except_id: str = "") -> None:
+    if any(s["name"].lower() == name.lower() and s["id"] != except_id for s in await _services()):
+        raise HTTPException(status_code=409, detail=f"“{name}” is already in the list.")
+
+
+@router.get("/services")
+async def list_services(admin: Dict[str, Any] = Depends(get_current_admin)):
+    return {"items": await _services()}
+
+
+@router.post("/services")
+async def add_service(req: ServiceName, admin: Dict[str, Any] = Depends(get_current_admin)):
+    name = _clean_name(req.name)
+    await _unique(name)
+    row = {"_id": uuid.uuid4().hex, "name": name, "created_at": _now(), "created_by": _person(admin)["name"]}
+    await get_collection("operation_services").insert_one(dict(row))
+    return {"id": row["_id"], "name": name}
+
+
+@router.put("/services/{service_id}")
+async def rename_service(service_id: str, req: ServiceName, admin: Dict[str, Any] = Depends(get_current_admin)):
+    row = await get_collection("operation_services").find_one({"_id": service_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    name = _clean_name(req.name)
+    await _unique(name, service_id)
+    await get_collection("operation_services").update_one({"_id": service_id}, {"$set": {"name": name, "updated_at": _now()}})
+    # Cases that list the service keep listing it under its new name.
+    old = row.get("name", "")
+    for c in await get_collection("operation_cases").find({}).to_list(100000):
+        if old in (c.get("services") or []):
+            await get_collection("operation_cases").update_one({"_id": c["_id"]}, {"$set": {
+                "services": [name if x == old else x for x in c["services"]]}})
+    return {"id": service_id, "name": name}
+
+
+@router.delete("/services/{service_id}")
+async def delete_service(service_id: str, admin: Dict[str, Any] = Depends(get_current_admin)):
+    if not await get_collection("operation_services").find_one({"_id": service_id}):
+        raise HTTPException(status_code=404, detail="Service not found.")
+    await get_collection("operation_services").delete_one({"_id": service_id})
+    return {"success": True}  # cases keep the name they were given
+
+
+class CaseServices(BaseModel):
+    services: List[str] = Field(default_factory=list, max_length=30)
+
+
+@router.put("/cases/{kind}/{item_id}/services")
+async def set_case_services(kind: str, item_id: str, req: CaseServices, admin: Dict[str, Any] = Depends(get_current_admin)):
+    case = await _build_case(kind, item_id, admin)
+    known = {s["name"] for s in await _services()}
+    chosen = list(dict.fromkeys(_clean_name(x) for x in req.services))
+    unknown = [x for x in chosen if x not in known and x not in case["services"]]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Not in the services list: {', '.join(unknown)}.")
+    key = _case_key(kind, item_id)
+    row = await get_collection("operation_cases").find_one({"_id": key})
+    await _save(key, kind, item_id, row, {"services": chosen, "updated_at": _now()})
+    return await _build_case(kind, item_id, admin)

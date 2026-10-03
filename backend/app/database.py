@@ -38,7 +38,7 @@ KNOWN_COLLECTIONS = [
     "deployment_history", "backup_jobs", "configuration_changes", "session_tracking",
     "pf_settings", "pf_rules", "employee_pf_details", "payroll_pf_transactions", "pf_audit_logs", "pf_events",
     # Operation dashboard (see routers/operations.py); crm_activities holds its call / email reminders
-    "operation_cases", "operation_notifications", "crm_activities",
+    "operation_cases", "operation_notifications", "operation_services", "operation_settings", "crm_activities",
 ]
 
 # Constraints the document API can't express: (index name, collection, SQL after "ON <table>").

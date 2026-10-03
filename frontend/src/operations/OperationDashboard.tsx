@@ -1,8 +1,8 @@
-import { useState, type DragEvent } from 'react';
+import { useState, type DragEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  AlarmClock, ArrowRight, Bell, Briefcase, CircleCheck, Download, FileCheck2, FileClock, FileText, History, Mail, Phone, ShieldAlert,
-  Trash2, UserRound, UserRoundCheck,
+  AlarmClock, ArrowRight, Bell, Briefcase, Check, ChevronDown, CircleCheck, Columns3, Download, Eye, FileCheck2, FileClock, FileText, History,
+  LayoutGrid, Mail, Pencil, Phone, Plus, ShieldAlert, Trash2, UserRound, UserRoundCheck, Wrench,
 } from 'lucide-react';
 import { api, saveBlob } from '../lib/api';
 import { useApi, useDebounced } from '../lib/useApi';
@@ -20,6 +20,7 @@ import { Drawer } from '../components/common/Modal';
 import { Skeleton } from '../components/common/Skeleton';
 import { Tabs } from '../components/common/Tabs';
 import { useToast } from '../components/common/ToastContext';
+import { useConfirm } from '../components/common/ConfirmDialog';
 import { StatCard } from '../components/dashboard/StatCard';
 
 interface Stage { key: string; label: string; count: number }
@@ -36,9 +37,9 @@ interface Reminder {
 interface OpsCase {
   key: string; kind: 'record' | 'document'; id: string; reference: string; company_name: string;
   contact_name: string; contact_email: string; contact_phone: string; gstin: string; bdm: string; services: string[];
-  amount?: number | null; legal_status: string; legal_approved: boolean; created_at: string;
+  amount?: number | null; legal_status: string; legal_approved: boolean; legal_approved_at: string; current_status: string; created_at: string;
   assigned_to?: Person | null; assigned_by?: Person | null; assigned_at?: string | null;
-  stage: string; stage_label: string; stage_since: string; stage_by: string;
+  stage: string; stage_label: string; stage_since: string; stage_by: string; max_stage?: string | null; max_stage_label?: string;
   documents: LegalDocument[]; pending_review: number; next_reminder?: Reminder | null;
   history?: StageMove[]; reminders?: Reminder[];
 }
@@ -48,7 +49,12 @@ interface Board {
   documents_total: number; awaiting_legal: number; can_manage: boolean;
 }
 
+interface Service { id: string; name: string }
+
 const VIEW_LABELS: Record<View, string> = { unassigned: 'Unassigned', mine: 'Assigned to me', by_me: 'Assigned by me', all: 'All cases' };
+const SECTION_TITLES: Record<View, string> = {
+  unassigned: 'Unassigned CRM Entries', mine: 'My Assigned CRM Entries', by_me: 'CRM Entries I Assigned', all: 'All CRM Entries',
+};
 const REMINDER_LABEL = { CALL: 'Call', EMAIL: 'Email' } as const;
 const kb = (n?: number | null) => (!n ? '' : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const caseUrl = (c: Pick<OpsCase, 'kind' | 'id'>) => `/api/operations/cases/${c.kind}/${encodeURIComponent(c.id)}`;
@@ -60,6 +66,21 @@ const fromKey = (key: string) => {
 const toMs = (v?: string | null) => (v ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(v) ? v : `${v}Z`).getTime() : 0);
 const overdue = (r?: Reminder | null) => !!r && toMs(r.due_at) <= Date.now();
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+/** Collapsible section with the amber header used across the Operation dashboard. */
+function Section({ icon: Icon, title, children, defaultOpen = true }: { icon: typeof Bell; title: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-border bg-surface-secondary">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 border-b border-amber-200/70 bg-amber-50/70 px-4 py-3 text-left dark:border-amber-900/50 dark:bg-amber-950/30">
+        <span className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400"><Icon size={16} aria-hidden="true" />{title}</span>
+        <ChevronDown size={18} aria-hidden="true" className={`text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="p-3 sm:p-4">{children}</div>}
+    </div>
+  );
+}
 
 function SourceBadge({ source }: { source: LegalDocument['source'] }) {
   return source === 'APPROVED' ? <Badge tone="success">Approved by Legal</Badge> : <Badge tone="info">Provided by Legal</Badge>;
@@ -99,7 +120,10 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
   const [withDocs, setWithDocs] = useState(false);
   const [open, setOpen] = useState<Pick<OpsCase, 'kind' | 'id' | 'key'> | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [layout, setLayout] = useState<'entries' | 'board'>('entries');
   const q = useDebounced(search);
+  const admins = useApi(() => api.get<{ items: Person[] }>('/api/operations/assignees'), []);
+  const services = useApi(() => api.get<{ items: Service[] }>('/api/operations/services'), []);
   const view: View = tab === 'reminders' || tab === 'notifications' ? 'unassigned' : tab;
   const board = useApi(() => api.get<Board>('/api/operations/board', { view, search: q, with_documents: withDocs || undefined }), [view, q, withDocs]);
   const reminders = useApi(() => api.get<{ items: Reminder[] }>('/api/operations/reminders'), []);
@@ -155,7 +179,7 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
         <NotificationsList />
       ) : (
         <>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard icon={Briefcase} label={VIEW_LABELS[view]} value={data ? number(data.total) : <Skeleton className="h-7 w-10" />} hint="Client cases in this view" />
             <StatCard icon={FileCheck2} tone="success" label="Documents from Legal" value={data ? number(data.documents_total) : <Skeleton className="h-7 w-10" />} hint="Provided or approved" />
             <StatCard icon={FileClock} tone={data?.awaiting_legal ? 'warning' : 'info'} label="Waiting for Legal approval" value={data ? number(data.awaiting_legal) : <Skeleton className="h-7 w-10" />} hint="Can't leave Onboarding yet" />
@@ -165,13 +189,32 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
           <Card className="mb-4 flex flex-wrap items-end gap-3 p-3">
             <SearchInput value={search} onChange={setSearch} label="Search cases" placeholder="Search company, reference, BDM, service…" />
             <Checkbox className="pb-2" label="Only cases with Legal documents" checked={withDocs} onChange={(e) => setWithDocs(e.target.checked)} />
-            <p className="ml-auto pb-2 text-xs text-text-muted">Drag a card to another stage, or open it to assign, move or set a reminder.</p>
+            <div className="ml-auto flex rounded-md border border-border p-0.5" role="group" aria-label="Layout">
+              {([['entries', 'Entries', LayoutGrid], ['board', 'Stage board', Columns3]] as const).map(([id, label, Icon]) => (
+                <button key={id} type="button" aria-pressed={layout === id} onClick={() => setLayout(id)}
+                  className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium ${layout === id ? 'bg-primary-soft text-primary' : 'text-text-muted hover:text-text'}`}>
+                  <Icon size={13} aria-hidden="true" />{label}
+                </button>
+              ))}
+            </div>
           </Card>
 
           {board.status === 'error' ? (
             <Card><ErrorState onRetry={board.reload} message={board.error} /></Card>
           ) : !data ? (
             <div className="flex gap-3 overflow-hidden">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-72 w-72 shrink-0" />)}</div>
+          ) : layout === 'entries' ? (
+            <Section icon={UserRoundCheck} title={`${SECTION_TITLES[view]} (Newest legal approval first)`}>
+              {data.total === 0 ? (
+                <p className="rounded-lg border border-dashed border-border bg-surface py-8 text-center text-sm text-text-muted">No entries found.</p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {data.cases.map((c) => (
+                    <EntryCard key={c.key} c={c} stages={data.stages} admins={admins.data?.items ?? []} onView={() => setOpen(c)} onChanged={reload} />
+                  ))}
+                </div>
+              )}
+            </Section>
           ) : data.total === 0 ? (
             <Card>
               <EmptyState icon={Briefcase} title={view === 'unassigned' ? 'No unassigned cases' : `Nothing ${VIEW_LABELS[view].toLowerCase()}`}
@@ -236,10 +279,153 @@ export function OperationBoard({ embedded = false }: { embedded?: boolean }) {
         </>
       )}
 
+      {data?.can_manage && tab !== 'reminders' && tab !== 'notifications' && (
+        <ManageServices items={services.data?.items ?? []} loading={services.loading} onChanged={services.reload} />
+      )}
+
       {open && data && (
-        <CaseDrawer key={open.key} target={open} stages={data.stages} onClose={() => setOpen(null)} onMove={move} onChanged={reload} />
+        <CaseDrawer key={open.key} target={open} stages={data.stages} admins={admins.data?.items ?? []} services={services.data?.items ?? []}
+          onClose={() => setOpen(null)} onMove={move} onChanged={reload} />
       )}
     </div>
+  );
+}
+
+/** One CRM entry as in the reference: current status, assign an Admin with the furthest stage they may take it to, view. */
+function EntryCard({ c, stages, admins, onView, onChanged }: { c: OpsCase; stages: Stage[]; admins: Person[]; onView: () => void; onChanged: () => void }) {
+  const { showToast } = useToast();
+  const [assignee, setAssignee] = useState(c.assigned_to?.user_id ?? '');
+  const [maxStage, setMaxStage] = useState(c.max_stage ?? '');
+  const [saving, setSaving] = useState(false);
+  const unchanged = assignee === (c.assigned_to?.user_id ?? '') && maxStage === (c.max_stage ?? '');
+  const box = 'rounded-lg border border-border bg-surface-secondary p-3';
+  const label = 'mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted';
+
+  const assign = async () => {
+    setSaving(true);
+    try {
+      const updated = await api.put<OpsCase>(`${caseUrl(c)}/assign`, { user_id: assignee, max_stage: maxStage || null });
+      showToast(`${c.company_name} assigned to ${updated.assigned_to?.name}`, 'success');
+      onChanged();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not assign', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-xs font-semibold text-primary">{c.reference || '—'}</span>
+          <span className="text-xs text-text-muted">{c.legal_approved_at ? `Approved ${date(c.legal_approved_at.slice(0, 10))}` : 'Waiting for Legal'}</span>
+        </div>
+        <p className="mt-1 truncate text-sm font-semibold text-text">{c.company_name}</p>
+        <p className="truncate text-xs text-text-muted">{c.services.join(', ') || c.bdm || '—'}</p>
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+          <span>Stage: <span className="text-text">{c.stage_label}</span></span>
+          <span className={c.documents.length ? 'text-success' : ''}>{c.documents.length} Legal {c.documents.length === 1 ? 'document' : 'documents'}</span>
+          {c.next_reminder && <ReminderLine r={c.next_reminder} />}
+        </p>
+      </div>
+      <div className={box}>
+        <p className={label}>Current status</p>
+        <StatusBadge status={c.current_status} />
+      </div>
+      <div className={box}>
+        <Select label="Assign admin member" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+          <option value="">Select admin member</option>
+          {admins.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
+        </Select>
+      </div>
+      <div className={box}>
+        <Select label="Max allowed stage" value={maxStage} onChange={(e) => setMaxStage(e.target.value)}>
+          <option value="">Select stage (any)</option>
+          {stages.map((s, i) => <option key={s.key} value={s.key}>{i + 1}. {s.label}</option>)}
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Button className="justify-center bg-emerald-600 text-white hover:bg-emerald-700" loading={saving} disabled={!assignee || unchanged} onClick={assign}>
+          <Check size={15} /> Assign
+        </Button>
+        <Button className="justify-center" onClick={onView}><Eye size={15} /> View</Button>
+      </div>
+    </div>
+  );
+}
+
+function ManageServices({ items, loading, onChanged }: { items: Service[]; loading: boolean; onChanged: () => void }) {
+  const { showToast } = useToast();
+  const confirm = useConfirm();
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState('');
+
+  const run = async (what: string, fn: () => Promise<unknown>, done: string) => {
+    setBusy(what);
+    try {
+      await fn();
+      showToast(done, 'success');
+      onChanged();
+      return true;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Something went wrong', 'error');
+      return false;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const add = async () => {
+    if (await run('add', () => api.post('/api/operations/services', { name }), `Added ${name.trim()}`)) setName('');
+  };
+  const save = async () => {
+    if (editing && await run(editing.id, () => api.put(`/api/operations/services/${editing.id}`, { name: editing.name }), 'Service renamed')) setEditing(null);
+  };
+  const remove = async (s: Service) => {
+    if (!(await confirm({ title: `Delete “${s.name}”?`, message: 'It disappears from the services list. Cases that already list it keep it.', confirmText: 'Delete', tone: 'danger' }))) return;
+    await run(s.id, () => api.delete(`/api/operations/services/${s.id}`), 'Service deleted');
+  };
+
+  return (
+    <Section icon={Wrench} title="Manage Services" defaultOpen={false}>
+      <form className="mb-3 flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); if (name.trim()) add(); }}>
+        <Input aria-label="New service name" placeholder="New Service Name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="flex-1" />
+        <Button type="submit" className="justify-center bg-emerald-600 text-white hover:bg-emerald-700 sm:w-56" loading={busy === 'add'} disabled={!name.trim()}>
+          <Plus size={15} /> Add Service
+        </Button>
+      </form>
+      {loading && items.length === 0 ? <Skeleton className="h-20 w-full" /> : items.length === 0 ? (
+        <p className="py-4 text-center text-sm text-text-muted">No services yet.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((s) => (
+            <div key={s.id} className="rounded-xl border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+              {editing?.id === s.id ? (
+                <Input aria-label="Service name" value={editing.name} maxLength={120} autoFocus onChange={(e) => setEditing({ id: s.id, name: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(null); }} />
+              ) : (
+                <p className="truncate text-sm font-semibold text-text" title={s.name}>{s.name}</p>
+              )}
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                {editing?.id === s.id ? (
+                  <>
+                    <Button size="sm" variant="secondary" className="justify-center" loading={busy === s.id} disabled={!editing.name.trim()} onClick={save}><Check size={13} /> Save</Button>
+                    <Button size="sm" variant="ghost" className="justify-center" onClick={() => setEditing(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="secondary" className="justify-center border-primary/40 text-primary" onClick={() => setEditing({ id: s.id, name: s.name })}><Pencil size={13} /> Edit</Button>
+                    <Button size="sm" variant="secondary" className="justify-center border-danger/40 text-danger" loading={busy === s.id} onClick={() => remove(s)}><Trash2 size={13} /> Delete</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -312,18 +498,19 @@ function NotificationsList() {
   );
 }
 
-function CaseDrawer({ target, stages, onClose, onMove, onChanged }: {
-  target: Pick<OpsCase, 'kind' | 'id' | 'key'>; stages: Stage[]; onClose: () => void;
+function CaseDrawer({ target, stages, admins, services, onClose, onMove, onChanged }: {
+  target: Pick<OpsCase, 'kind' | 'id' | 'key'>; stages: Stage[]; admins: Person[]; services: Service[]; onClose: () => void;
   onMove: (c: OpsCase, stage: string, note?: string) => Promise<OpsCase | null>; onChanged: () => void;
 }) {
   const { showToast } = useToast();
   const { user } = useAuth();
   const detail = useApi(() => api.get<OpsCase>(caseUrl(target)), [target.key]);
-  const admins = useApi(() => api.get<{ items: Person[] }>('/api/operations/assignees'), []);
   const c = detail.data;
   const [stage, setStage] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [assignee, setAssignee] = useState<string | null>(null);
+  const [maxStage, setMaxStage] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[] | null>(null);
   const [rType, setRType] = useState<'CALL' | 'EMAIL'>('CALL');
   const [rDue, setRDue] = useState(() => localInput(new Date(Date.now() + 24 * 3600 * 1000)));
   const [rNote, setRNote] = useState('');
@@ -340,6 +527,9 @@ function CaseDrawer({ target, stages, onClose, onMove, onChanged }: {
   const next = stages[index + 1];
   const chosenStage = stage ?? c.stage;
   const chosenAssignee = assignee ?? c.assigned_to?.user_id ?? '';
+  const chosenMax = maxStage ?? c.max_stage ?? '';
+  const chosenServices = picked ?? c.services;
+  const serviceNames = [...new Set([...services.map((s) => s.name), ...c.services])];
 
   const run = async (what: string, fn: () => Promise<OpsCase | null | void>) => {
     setBusy(what);
@@ -360,9 +550,18 @@ function CaseDrawer({ target, stages, onClose, onMove, onChanged }: {
   });
 
   const assign = (userId: string | null) => run('assign', async () => {
-    const updated = await api.put<OpsCase>(`${caseUrl(c)}/assign`, { user_id: userId });
+    const updated = await api.put<OpsCase>(`${caseUrl(c)}/assign`, { user_id: userId, max_stage: userId ? chosenMax || null : null });
     showToast(userId ? `Assigned to ${updated.assigned_to?.name}` : 'Case unassigned', 'success');
     setAssignee(null);
+    setMaxStage(null);
+    onChanged();
+    return updated;
+  });
+
+  const saveServices = () => run('services', async () => {
+    const updated = await api.put<OpsCase>(`${caseUrl(c)}/services`, { services: chosenServices });
+    showToast('Services saved', 'success');
+    setPicked(null);
     onChanged();
     return updated;
   });
@@ -406,6 +605,8 @@ function CaseDrawer({ target, stages, onClose, onMove, onChanged }: {
           <p className="text-xs text-text-muted">Current stage</p>
           <p className="mt-0.5 text-base font-semibold text-text">{index + 1}. {c.stage_label}</p>
           <p className="text-xs text-text-muted">Since {dateTime(c.stage_since)}{c.stage_by ? ` · moved by ${c.stage_by}` : ''}</p>
+          <p className="mt-1 flex items-center gap-2 text-xs text-text-muted">Current status <StatusBadge status={c.current_status} />
+            {c.max_stage_label && <span>· may go up to {c.max_stage_label}</span>}</p>
           {!c.legal_approved && (
             <p className="mt-2 flex items-start gap-1.5 rounded-md bg-warning-bg px-3 py-2 text-xs text-warning">
               <ShieldAlert size={14} className="mt-px shrink-0" aria-hidden="true" />
@@ -432,16 +633,44 @@ function CaseDrawer({ target, stages, onClose, onMove, onChanged }: {
           <div className="mt-2 flex flex-wrap items-end gap-2">
             <Select label="Admin" value={chosenAssignee} onChange={(e) => setAssignee(e.target.value)} className="min-w-0 flex-1">
               <option value="">Choose an Admin…</option>
-              {(admins.data?.items ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.name}{p.email && p.email !== p.name ? ` (${p.email})` : ''}</option>)}
+              {admins.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}{p.email && p.email !== p.name ? ` (${p.email})` : ''}</option>)}
             </Select>
-            <Button size="sm" loading={busy === 'assign'} disabled={!chosenAssignee || chosenAssignee === c.assigned_to?.user_id} onClick={() => assign(chosenAssignee)}>
+            <Select label="Max allowed stage" value={chosenMax} onChange={(e) => setMaxStage(e.target.value)} className="min-w-0 flex-1">
+              <option value="">Any stage</option>
+              {stages.map((s, i) => <option key={s.key} value={s.key}>{i + 1}. {s.label}</option>)}
+            </Select>
+            <Button size="sm" loading={busy === 'assign'} disabled={!chosenAssignee || (chosenAssignee === c.assigned_to?.user_id && chosenMax === (c.max_stage ?? ''))} onClick={() => assign(chosenAssignee)}>
               <UserRoundCheck size={13} /> Assign
             </Button>
-            {!c.assigned_to && user && (admins.data?.items ?? []).some((p) => p.user_id === user.id) && (
+            {!c.assigned_to && user && admins.some((p) => p.user_id === user.id) && (
               <Button size="sm" variant="secondary" loading={busy === 'assign'} onClick={() => assign(user.id)}>Assign to me</Button>
             )}
             {c.assigned_to && <Button size="sm" variant="ghost" loading={busy === 'assign'} onClick={() => assign(null)}>Unassign</Button>}
           </div>
+        </div>
+
+        <div>
+          <p className={section}>Services</p>
+          {serviceNames.length === 0 ? <p className="text-text-muted">No services in the list yet.</p> : (
+            <div className="flex flex-wrap gap-1.5">
+              {serviceNames.map((n) => {
+                const on = chosenServices.includes(n);
+                return (
+                  <button key={n} type="button" aria-pressed={on}
+                    onClick={() => setPicked(on ? chosenServices.filter((x) => x !== n) : [...chosenServices, n])}
+                    className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border text-text-secondary hover:border-border-strong'}`}>
+                    {on && <Check size={11} className="mr-1 inline" aria-hidden="true" />}{n}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {picked && (
+            <div className="mt-2 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setPicked(null)}>Cancel</Button>
+              <Button size="sm" loading={busy === 'services'} onClick={saveServices}>Save services</Button>
+            </div>
+          )}
         </div>
 
         <div>

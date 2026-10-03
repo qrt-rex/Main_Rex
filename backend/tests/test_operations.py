@@ -216,3 +216,49 @@ def test_search(client, store, people):
     add_record(store, "#9101")
     add_record(store, "#9102")
     assert [c["reference"] for c in board(client, people, "support", search="9102")["cases"]] == ["#9102"]
+
+
+def test_max_allowed_stage_limits_the_assignee(client, store, people):
+    cid = add_record(store)
+    r = client.put(f"{API}/cases/record/{cid}/assign", json={"user_id": uid(people, "rahul"), "max_stage": "PROCESS_START"}, headers=H(people, "anita"))
+    assert r.status_code == 200 and r.json()["max_stage_label"] == "Process start"
+    url = f"{API}/cases/record/{cid}/stage"
+    assert client.put(url, json={"stage": "PROCESS_START"}, headers=H(people, "rahul")).status_code == 200
+    blocked = client.put(url, json={"stage": "APPROVAL"}, headers=H(people, "rahul"))
+    assert blocked.status_code == 409 and "up to Process start" in blocked.text
+    # whoever assigned it can raise the limit, and can move it past the limit themselves
+    raised = client.put(f"{API}/cases/record/{cid}/assign", json={"user_id": uid(people, "rahul"), "max_stage": "SELECTION"}, headers=H(people, "anita"))
+    assert raised.json()["max_stage"] == "SELECTION" and raised.json()["assigned_by"]["name"] == "anita"
+    c = client.put(url, json={"stage": "APPROVAL"}, headers=H(people, "rahul")).json()
+    assert c["stage"] == "APPROVAL" and c["current_status"] == "APPROVAL"  # the status follows the stage once past Onboarding
+    bad = client.put(f"{API}/cases/record/{cid}/assign", json={"user_id": uid(people, "rahul"), "max_stage": "NOPE"}, headers=H(people, "anita"))
+    assert bad.status_code == 422
+
+
+def test_newest_legal_approval_first(client, store, people):
+    old, new = add_record(store, "#9101"), add_record(store, "#9102")
+    waiting = add_record(store, "#9103", status="PENDING")
+    store["legal_records"][old]["reviewed_at"] = "2026-09-01T10:00:00"
+    store["legal_records"][new]["reviewed_at"] = "2026-10-01T10:00:00"
+    b = board(client, people, "anita")
+    assert [c["id"] for c in b["cases"]] == [new, old, waiting]
+    assert b["cases"][0]["current_status"] == "APPROVED" and b["cases"][2]["legal_approved_at"] == ""
+
+
+def test_manage_services_and_case_services(client, store, people):
+    cid = add_record(store)
+    seeded = client.get(f"{API}/services", headers=H(people, "anita")).json()["items"]
+    assert [s["name"] for s in seeded] == ["GST Registration"]  # started from Legal's records
+    assert client.post(f"{API}/services", json={"name": "12A And 80G"}, headers=H(people, "anita")).status_code == 403  # managers only
+    added = client.post(f"{API}/services", json={"name": "  AAROHAN   6.0 "}, headers=H(people, "support")).json()
+    assert added["name"] == "AAROHAN 6.0"
+    assert client.post(f"{API}/services", json={"name": "aarohan 6.0"}, headers=H(people, "support")).status_code == 409
+
+    c = client.put(f"{API}/cases/record/{cid}/services", json={"services": ["AAROHAN 6.0", "GST Registration"]}, headers=H(people, "anita")).json()
+    assert c["services"] == ["AAROHAN 6.0", "GST Registration"]
+    assert client.put(f"{API}/cases/record/{cid}/services", json={"services": ["Made up"]}, headers=H(people, "anita")).status_code == 422
+
+    client.put(f"{API}/services/{added['id']}", json={"name": "AAROHAN 7.0"}, headers=H(people, "support"))
+    assert case(board(client, people, "anita"), f"record:{cid}")["services"] == ["AAROHAN 7.0", "GST Registration"]
+    assert client.delete(f"{API}/services/{added['id']}", headers=H(people, "support")).status_code == 200
+    assert [s["name"] for s in client.get(f"{API}/services", headers=H(people, "anita")).json()["items"]] == ["GST Registration"]
