@@ -468,7 +468,8 @@ def _client_view(kind: str, d: Dict[str, Any]) -> Dict[str, Any]:
                 "contact_name": "", "contact_email": "", "contact_phone": "", "gstin": "",
                 "bdm": d.get("bdm_name", ""), "services": d.get("services") or [], "documents": [],
                 "amount": d.get("amount_paid"), "status": d.get("status", "PENDING"), "pdf_available": bool(d.get("pdf_available")),
-                "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", "")}
+                "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", ""),
+                "operation_stage": d.get("operation_stage_label", "")}
     # Every field of a document form is optional: fall back to the contact's name for display.
     company = d.get("company_name") or d.get("name") or d.get("email") or "Unnamed client"
     return {"kind": kind, "id": str(d["_id"]), "reference": d.get("reference", ""), "company_name": company,
@@ -476,7 +477,8 @@ def _client_view(kind: str, d: Dict[str, Any]) -> Dict[str, Any]:
             "gstin": d.get("gst_number", ""), "bdm": d.get("submitted_by_name", ""), "services": [],
             "documents": sorted({f.get("label", "") for f in d.get("files") or []}),
             "amount": None, "status": d.get("status", "PENDING"),
-            "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", "")}
+            "assigned_to": d.get("assigned_to"), "created_at": d.get("created_at", ""),
+                "operation_stage": d.get("operation_stage_label", "")}
 
 
 async def _all_clients() -> List[Dict[str, Any]]:
@@ -692,7 +694,11 @@ async def get_legal_record_pdf(crm_id: str, admin: Dict[str, Any] = Depends(get_
     rec = await col.find_one({"crm_id": formatted_crm_id}) or await col.find_one({"_id": crm_id})
     if not rec or not (await full_legal_access(admin) or assigned_to_me(rec, admin)):
         raise HTTPException(status_code=404, detail="Legal document not found")
+    return HTMLResponse(content=record_report_html(rec))
 
+
+def record_report_html(rec: Dict[str, Any]) -> str:
+    """The Legal team's verification report for a legal record (also listed on the Operation dashboard)."""
     services_html = "".join([f"<span class='badge'>{s}</span>" for s in rec.get("services", [])])
     company = rec.get("company_name", "N/A")
     cid = rec.get("crm_id", "N/A")
@@ -763,4 +769,4 @@ async def get_legal_record_pdf(crm_id: str, admin: Dict[str, Any] = Depends(get_
     </div>
 </body>
 </html>"""
-    return HTMLResponse(content=html_content)
+    return html_content

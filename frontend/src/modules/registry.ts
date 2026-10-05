@@ -88,8 +88,9 @@ export const sections: NavSection[] = [
     id: 'operations',
     label: 'Operations',
     icon: FolderKanban,
-    description: 'Finance, projects and reporting',
+    description: 'Client case stages, finance, projects and reporting',
     items: [
+      { id: 'ops-dashboard', label: 'Operation dashboard', path: '/operations', icon: FolderKanban, permission: 'operations.dashboard.view', description: 'Client cases by stage, with the documents Legal provided or approved' },
       { id: 'ops-finance', label: 'Finance', path: '/finance', icon: Wallet, permission: 'finance.view', placeholder: true, description: 'Invoicing and revenue' },
       { id: 'ops-projects', label: 'Projects', path: '/projects', icon: FolderKanban, permission: 'projects.view', placeholder: true, description: 'Client project delivery' },
       { id: 'ops-reports', label: 'Reports', path: '/reports', icon: BarChart3, permission: 'reports.view', placeholder: true, description: 'Cross-module analytics' },

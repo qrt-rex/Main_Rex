@@ -107,7 +107,7 @@ export function SupportDashboard({ summary }: { summary: WorkspaceSummary }) {
       />
 
       <SectionTitle>Your modules</SectionTitle>
-      <ModuleEntities ids={['sales-customers', 'sales-contacts', 'hr-productivity', 'hr-broadcasts', 'ops-reports']} />
+      <ModuleEntities ids={['ops-dashboard', 'sales-customers', 'sales-contacts', 'hr-productivity', 'hr-broadcasts', 'ops-reports']} />
     </>
   );
 }

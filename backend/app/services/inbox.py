@@ -214,3 +214,16 @@ async def pf_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                   datetime.utcnow().date().isoformat(), "/hr/pf?tab=reports"), "tone": "warning"})
     return items
 
+
+
+async def operation_items(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Operation dashboard news for this user: cases assigned to them, stage moves, call and email reminders due."""
+    if "operations.dashboard.view" not in await rbac.get_user_permissions(user):
+        return []
+    uid = str(user.get("id") or user.get("_id") or "")
+    since = (datetime.utcnow() - timedelta(days=RECENT_DAYS)).isoformat()
+    rows = await get_collection("operation_notifications").find({"user_id": uid}).sort("created_at", -1).to_list(100)
+    return [{**_item("operations", f"operations-{n.get('_id')}", n.get("title") or "Operation dashboard", n.get("message") or "",
+                     n.get("created_at"), n.get("link") or "/operations"),
+             "tone": "warning" if "reminder" in str(n.get("title") or "").lower() else "info"}
+            for n in rows if _ts(n.get("created_at")) >= since]

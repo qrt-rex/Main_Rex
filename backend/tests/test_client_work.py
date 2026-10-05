@@ -458,7 +458,7 @@ def test_role_defaults_reach_roles_saved_before_the_module_existed(client, auth,
     from app.services import rbac_service as rbac
     rbac._cache.clear()
     perms = asyncio.run(rbac.get_role_permissions("legal"))
-    assert {"clientwork.view", "clientwork.monitor"} <= perms
+    assert {"clientwork.view", "clientwork.monitor", "operations.dashboard.view", "operations.dashboard.manage"} <= perms
     assert "clientwork.admin" not in asyncio.run(rbac.get_user_permissions({"role": "legal"}))
-    assert store["role_permissions"]["p1"]["later_defaults_applied"] == ["client_work"]
+    assert store["role_permissions"]["p1"]["later_defaults_applied"] == ["client_work", "operations_dashboard"]
 
